@@ -2867,7 +2867,7 @@ export default function CoffeePassportApp() {
     return { users: u, matches: m };
   });
 
-  const [currentUserId, setCurrentUserId] = useState(1);
+  const [currentUserId, setCurrentUserId] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [view, setView] = useState("landing");
   const [signedUpIds, setSignedUpIds] = useState(new Set());
@@ -2875,32 +2875,58 @@ export default function CoffeePassportApp() {
   const [notifications, setNotifications] = useState([]);
   const [celebrating, setCelebrating] = useState(false);
 
-  // [SSO-INTEGRATION-POINT] In production, ssoUser is populated after XSUAA OAuth2 token
-  // exchange via the BTP App Router. The token provides email, displayName, and optionally
-  // office/country from SAP People Profile. Replace the mock below with a real token fetch:
-  //   GET /api/userinfo  (proxied through App Router with Authorization: Bearer <token>)
-  // For now, mock as null (not signed in) and simulate login on the landing page.
+  // [SSO-INTEGRATION-POINT] ssoUser is populated from the BTP App Router's /userinfo endpoint.
+  // On BTP, the App Router injects the XSUAA JWT automatically — no extra token handling needed.
   const [ssoUser, setSsoUser] = useState(null);
 
-  // [SSO-INTEGRATION-POINT] Mock SAP SSO login — replace with BTP XSUAA redirect:
-  //   window.location.href = "/login" (App Router handles OAuth2 code flow)
+  // On mount, try to fetch real user info from BTP App Router's /uaa/userinfo endpoint.
+  // On localhost this will 404 and fall through silently (mock login used instead).
+  React.useEffect(() => {
+    fetch("/uaa/userinfo", { credentials: "include" })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => {
+        if (data && (data.email || data.user_name)) {
+          const fullName = (data.given_name && data.family_name)
+            ? `${data.given_name} ${data.family_name}`
+            : (data.name || data.displayName || data.user_name || data.email || "");
+          setSsoUser({
+            name: fullName,
+            email: data.email || data.user_name || "",
+            country: data.country || "",
+            office: data.companyLocation || data.office || "",
+          });
+        }
+      })
+      .catch(() => {}); // silently fail on localhost
+  }, []);
+
+  // [SSO-INTEGRATION-POINT] On localhost: mock login for development.
+  // On BTP: the landing page "Sign in with SAP" button triggers the App Router OAuth2 flow
+  //   via window.location.href = "/login" — user is redirected back already authenticated,
+  //   and the useEffect above will have populated ssoUser from /uaa/userinfo.
   function handleSSOLogin() {
-    // Simulate a successful SSO response with a mock SAP employee profile
+    // If already populated from BTP token, just proceed to signup
+    if (ssoUser) {
+      setView("signup");
+      return;
+    }
+    // Localhost dev fallback — redirects to the App Router login page on BTP
+    // Uncomment the line below when deployed: window.location.href = "/login";
     setSsoUser({
-      name: "Your Name",         // From XSUAA token: given_name + family_name
-      email: "user@sap.com",     // From XSUAA token: email (must be @sap.com)
-      country: "Germany",        // From SAP People Profile API
-      office: "Walldorf",        // From SAP People Profile API
+      name: "Your Name",         // Replace with real name from XSUAA token
+      email: "user@sap.com",
+      country: "",
+      office: "",
     });
     setView("signup");
   }
 
-  const currentUser = users.find(u => u.id === currentUserId);
+  const currentUser = users.find(u => u.id === currentUserId) || null;
 
   // Find the first unacknowledged incoming match for the current user (they are userB)
   const incomingMatch = useMemo(() =>
-    matches.find(m => m.userBId === currentUser.id && m.acknowledgedByB === false),
-    [matches, currentUser.id]
+    currentUser ? matches.find(m => m.userBId === currentUser.id && m.acknowledgedByB === false) : null,
+    [matches, currentUser?.id]
   );
   const incomingMatchUser = incomingMatch
     ? users.find(u => u.id === incomingMatch.userAId)
@@ -2914,11 +2940,13 @@ export default function CoffeePassportApp() {
   function dismissNotif(id) { setNotifications(n => n.filter(x => x.id !== id)); }
 
   const reshufflesLeft = useMemo(() => {
+    if (!currentUser) return MAX_RESHUFFLES_PER_DAY;
     if (currentUser.lastReshuffleDate !== todayStr()) return MAX_RESHUFFLES_PER_DAY;
     return Math.max(0, MAX_RESHUFFLES_PER_DAY - currentUser.reshufflesUsedToday);
   }, [currentUser]);
 
   const matchesLeft = useMemo(() => {
+    if (!currentUser) return MAX_MATCHES_PER_DAY;
     if (currentUser.lastMatchAcceptDate !== todayStr()) return MAX_MATCHES_PER_DAY;
     return Math.max(0, MAX_MATCHES_PER_DAY - currentUser.matchesAcceptedToday);
   }, [currentUser]);
@@ -3132,9 +3160,11 @@ export default function CoffeePassportApp() {
                     lastReshuffleDate: null, reshufflesUsedToday: 0,
                     lastMatchAcceptDate: null, matchesAcceptedToday: 0,
                   };
+                  // Switch the active user to the newly created profile
+                  setCurrentUserId(newId);
+                  setSignedUpIds(prev => new Set([...prev, newId]));
                   return { ...s, users: [...s.users, newUser] };
                 });
-                setSignedUpIds(prev => new Set([...prev, currentUserId]));
               }
               setView("dashboard");
             }}
