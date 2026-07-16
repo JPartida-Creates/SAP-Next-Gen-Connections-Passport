@@ -3,21 +3,14 @@
   "authenticationMethod": "route",
   "routes": [
     {
-      "source": "^/uaa/userinfo$",
-      "target": "/userinfo",
-      "authenticationType": "xsuaa",
-      "service": "sap-xsuaa-connectivity"
-    },
-    {
-      "source": "^/user-api/currentUser$",
-      "target": "/currentUser",
+      "source": "^/user-api(.*)",
+      "target": "$1",
       "service": "sap-approuter-userapi",
       "authenticationType": "xsuaa"
     },
     {
       "source": "^(/.*)",
-      "target": "$1",
-      "service": "html5-apps-repo-rt",
+      "localDir": "resources",
       "authenticationType": "xsuaa"
     }
   ]

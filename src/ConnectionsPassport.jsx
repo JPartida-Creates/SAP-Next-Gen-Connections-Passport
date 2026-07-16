@@ -3112,12 +3112,14 @@ export default function CoffeePassportApp() {
               {ssoUser.name}
             </span>
           )}
-          {/* [SSO-INTEGRATION-POINT] Admin access — in production gate this by XSUAA "Admin" role from the token */}
-          <button onClick={() => setIsAdmin(a => !a)}
-            className="flex items-center gap-1.5 text-xs rounded-full px-3 py-1.5 font-medium transition-colors"
-            style={{ backgroundColor: isAdmin ? "#DF1278" : "#0A3D8F", color: "#fff" }}>
-            <LayoutDashboard size={12} /> Admin
-          </button>
+          {/* Admin button — only visible to authorized admin email */}
+          {ssoUser?.email === "j.partida@sap.com" && (
+            <button onClick={() => setIsAdmin(a => !a)}
+              className="flex items-center gap-1.5 text-xs rounded-full px-3 py-1.5 font-medium transition-colors"
+              style={{ backgroundColor: isAdmin ? "#DF1278" : "#0A3D8F", color: "#fff" }}>
+              <LayoutDashboard size={12} /> Admin
+            </button>
+          )}
         </div>
       </div>
 

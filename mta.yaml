@@ -5,28 +5,27 @@ version: 1.0.0
 
 modules:
 
-  # ── App Router ────────────────────────────────────────────────
+  # ── App Router (also serves static React files) ───────────────
   - name: connections-passport-approuter
     type: approuter.nodejs
     path: approuter
     parameters:
-      disk-quota: 256M
-      memory: 128M
+      disk-quota: 512M
+      memory: 256M
+    build-parameters:
+      requires:
+        - name: connections-passport-ui
+          artifacts:
+            - dist/**
+          target-path: resources
     requires:
       - name: connections-passport-xsuaa
-      - name: connections-passport-html5-runtime
-      - name: srv-api
-        group: destinations
-        properties:
-          forwardAuthToken: true
-          name: srv-api
-          url: "~{srv-url}"
     provides:
       - name: app-api
         properties:
           app-url: "${default-url}"
 
-  # ── React Frontend (HTML5 App) ─────────────────────────────────
+  # ── React Frontend (built and copied for approuter) ───────────
   - name: connections-passport-ui
     type: html5
     path: .
@@ -35,8 +34,6 @@ modules:
       commands:
         - npm run build
       supported-platforms: []
-    requires:
-      - name: connections-passport-html5-host
 
 resources:
 
@@ -48,19 +45,3 @@ resources:
       service-plan: application
       path: ./xs-security.json
       service-name: connections-passport-xsuaa
-
-  # ── HTML5 App Host (stores the built React bundle) ────────────
-  - name: connections-passport-html5-host
-    type: org.cloudfoundry.managed-service
-    parameters:
-      service: html5-apps-repo
-      service-plan: app-host
-      service-name: connections-passport-html5-host
-
-  # ── HTML5 App Runtime (serves the bundle via App Router) ──────
-  - name: connections-passport-html5-runtime
-    type: org.cloudfoundry.managed-service
-    parameters:
-      service: html5-apps-repo
-      service-plan: app-runtime
-      service-name: connections-passport-html5-runtime
