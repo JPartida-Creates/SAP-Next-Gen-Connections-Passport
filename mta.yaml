@@ -1,0 +1,66 @@
+_schema-version: "3.1"
+ID: connections-passport
+description: SAP Next Gen Connections Passport
+version: 1.0.0
+
+modules:
+
+  # ── App Router ────────────────────────────────────────────────
+  - name: connections-passport-approuter
+    type: approuter.nodejs
+    path: approuter
+    parameters:
+      disk-quota: 256M
+      memory: 128M
+    requires:
+      - name: connections-passport-xsuaa
+      - name: connections-passport-html5-runtime
+      - name: srv-api
+        group: destinations
+        properties:
+          forwardAuthToken: true
+          name: srv-api
+          url: "~{srv-url}"
+    provides:
+      - name: app-api
+        properties:
+          app-url: "${default-url}"
+
+  # ── React Frontend (HTML5 App) ─────────────────────────────────
+  - name: connections-passport-ui
+    type: html5
+    path: .
+    build-parameters:
+      builder: custom
+      commands:
+        - npm run build
+      supported-platforms: []
+    requires:
+      - name: connections-passport-html5-host
+
+resources:
+
+  # ── XSUAA (SSO) ───────────────────────────────────────────────
+  - name: connections-passport-xsuaa
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: xsuaa
+      service-plan: application
+      path: ./xs-security.json
+      service-name: connections-passport-xsuaa
+
+  # ── HTML5 App Host (stores the built React bundle) ────────────
+  - name: connections-passport-html5-host
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: html5-apps-repo
+      service-plan: app-host
+      service-name: connections-passport-html5-host
+
+  # ── HTML5 App Runtime (serves the bundle via App Router) ──────
+  - name: connections-passport-html5-runtime
+    type: org.cloudfoundry.managed-service
+    parameters:
+      service: html5-apps-repo
+      service-plan: app-runtime
+      service-name: connections-passport-html5-runtime

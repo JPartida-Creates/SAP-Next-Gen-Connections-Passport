@@ -1,0 +1,44 @@
+{
+  "xsappname": "connections-passport",
+  "tenant-mode": "dedicated",
+  "description": "SAP Next Gen Connections Passport",
+  "scopes": [
+    {
+      "name": "$XSAPPNAME.User",
+      "description": "Standard user access"
+    },
+    {
+      "name": "$XSAPPNAME.Admin",
+      "description": "Admin access to all user data"
+    }
+  ],
+  "role-templates": [
+    {
+      "name": "User",
+      "description": "Standard user",
+      "scope-references": ["$XSAPPNAME.User"]
+    },
+    {
+      "name": "Admin",
+      "description": "Administrator",
+      "scope-references": ["$XSAPPNAME.User", "$XSAPPNAME.Admin"]
+    }
+  ],
+  "role-collections": [
+    {
+      "name": "Connections Passport User",
+      "description": "Can sign up and use the passport",
+      "role-template-references": ["$XSAPPNAME.User"]
+    },
+    {
+      "name": "Connections Passport Admin",
+      "description": "Full admin access",
+      "role-template-references": ["$XSAPPNAME.Admin"]
+    }
+  ],
+  "oauth2-configuration": {
+    "redirect-uris": [
+      "https://*.cfapps.us10.hana.ondemand.com/**"
+    ]
+  }
+}

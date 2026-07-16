@@ -2883,25 +2883,26 @@ export default function CoffeePassportApp() {
   const [notifications, setNotifications] = useState([]);
   const [celebrating, setCelebrating] = useState(false);
 
-  // [SSO-INTEGRATION-POINT] ssoUser is populated from the BTP App Router's /userinfo endpoint.
+  // [SSO-INTEGRATION-POINT] ssoUser is populated from the BTP App Router's user API.
   // On BTP, the App Router injects the XSUAA JWT automatically — no extra token handling needed.
   const [ssoUser, setSsoUser] = useState(null);
 
-  // On mount, try to fetch real user info from BTP App Router's /uaa/userinfo endpoint.
+  // On mount, fetch real user info from the App Router's built-in /user-api/currentUser endpoint.
+  // This is provided by @sap/approuter with no custom backend needed.
   // On localhost this will 404 and fall through silently (mock login used instead).
   React.useEffect(() => {
-    fetch("/uaa/userinfo", { credentials: "include" })
+    fetch("/user-api/currentUser", { credentials: "include" })
       .then(r => r.ok ? r.json() : null)
       .then(data => {
-        if (data && (data.email || data.user_name)) {
-          const fullName = (data.given_name && data.family_name)
-            ? `${data.given_name} ${data.family_name}`
-            : (data.name || data.displayName || data.user_name || data.email || "");
+        if (data && data.email) {
+          const fullName = (data.firstname && data.lastname)
+            ? `${data.firstname} ${data.lastname}`
+            : (data.name || data.displayName || data.email || "");
           setSsoUser({
             name: fullName,
-            email: data.email || data.user_name || "",
+            email: data.email || "",
             country: data.country || "",
-            office: data.companyLocation || data.office || "",
+            office: data.companyLocation || "",
           });
         }
       })
