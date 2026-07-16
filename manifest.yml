@@ -1,0 +1,15 @@
+---
+applications:
+  - name: connections-passport
+    memory: 64M
+    disk_quota: 512M
+    instances: 1
+    buildpacks:
+      - staticfile_buildpack
+    path: dist
+    env:
+      FORCE_HTTPS: true
+    # Before pushing, run:
+    #   VITE_ANTHROPIC_API_KEY=sk-ant-... npm run build
+    # Then deploy:
+    #   cf push
