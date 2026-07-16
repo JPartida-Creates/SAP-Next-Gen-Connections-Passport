@@ -1067,7 +1067,7 @@ function MatchesPanel({ matches, users, currentUser, onConfirm, onRemove, onAckn
     const teamsLink = `https://teams.microsoft.com/l/meeting/new?subject=${encodeURIComponent(subject)}&attendees=${encodeURIComponent(other.name)}`;
     const body = `Hi ${theirName.split(" ")[0]},
 
-I'd love to connect for a quick coffee chat as part of the SAP Next Gen Connections Passport programme! 🌍
+I'd love to connect for a quick coffee chat as part of the SAP Next Gen Connections Passport program! 🌍
 
 📋 Suggested agenda (30 min):
   • Quick intros — role, office, what you're working on
@@ -1085,7 +1085,7 @@ ${myName}
 
 —
 🔗 Book via Teams: ${teamsLink}
-📌 Programme: SAP Next Gen Connections Passport`;
+📌 Program: SAP Next Gen Connections Passport`;
 
     return { subject, body, teamsLink };
   }
@@ -1710,14 +1710,29 @@ function PassportPage({ user }) {
 
 const SIGNUP_STEPS = ["Privacy & Consent", "Profile", "Interests", "Review"];
 
-function SignupPage({ onComplete, users, editMode = false, initialData = null, onPause, onDelete, isPaused }) {
+function SignupPage({ onComplete, users, editMode = false, initialData = null, onPause, onDelete, isPaused, ssoUser }) {
   const [step, setStep] = useState(editMode ? 1 : 0);
   const [consent, setConsent] = useState({ dataProcessing: false, guidelines: false });
+
+  // [SSO-INTEGRATION-POINT] Pre-fill name and office from SSO if available.
+  // In production, ssoUser comes from the XSUAA token + SAP People Profile API.
+  const ssoDefaults = ssoUser ? {
+    name: ssoUser.name,
+    office: ssoUser.office || OFFICES[0].office,
+    country: ssoUser.country || OFFICES[0].country,
+    region: OFFICES.find(o => o.office === (ssoUser.office || OFFICES[0].office))?.region || OFFICES[0].region,
+  } : {};
+
   const [form, setForm] = useState(initialData || {
-    name: "", role: ROLES[0],
-    office: OFFICES[0].office, country: OFFICES[0].country, region: OFFICES[0].region,
+    name: ssoDefaults.name || "",
+    role: ROLES[0],
+    office: ssoDefaults.office || OFFICES[0].office,
+    country: ssoDefaults.country || OFFICES[0].country,
+    region: ssoDefaults.region || OFFICES[0].region,
     interests: [],
   });
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportCopied, setReportCopied] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [otherInterest, setOtherInterest] = useState("");
 
@@ -1835,7 +1850,7 @@ function SignupPage({ onComplete, users, editMode = false, initialData = null, o
                     onChange={e => setConsent(c => ({ ...c, dataProcessing: e.target.checked }))}
                     className="mt-0.5 shrink-0 accent-[#002060]" />
                   <span className="text-xs text-[#445063] leading-relaxed">
-                    I have read the privacy notice and consent to SAP collecting and using my name, role, office, and interests for the Connections Passport matching programme. My profile will be visible to other participants. <span className="text-[#DF1278] font-semibold">*</span>
+                    I have read the privacy notice and consent to SAP collecting and using my name, role, office, and interests for the Connections Passport matching program. My profile will be visible to other participants. <span className="text-[#DF1278] font-semibold">*</span>
                   </span>
                 </label>
               </div>
@@ -1851,8 +1866,8 @@ function SignupPage({ onComplete, users, editMode = false, initialData = null, o
                   { emoji: "🤝", rule: "Be respectful", detail: "Professional, inclusive behaviour only." },
                   { emoji: "📅", rule: "Show up", detail: "Schedule your chat within the 7-day window." },
                   { emoji: "✅", rule: "Be honest", detail: "Only confirm a chat once it's actually happened." },
-                  { emoji: "🚩", rule: "Report issues", detail: "Report misuse or inappropriate behaviour directly to the SAP Next Gen E2E team.", link: "mailto:SAPnextgen@sap.com?subject=Connections%20Passport%20%E2%80%94%20Report%20an%20Issue&body=Hi%20SAP%20Next%20Gen%20E2E%20Team%2C%0A%0AI%20would%20like%20to%20report%20the%20following%20issue%20with%20the%20Connections%20Passport%20programme%3A%0A%0A%5BPlease%20describe%20the%20issue%20here%5D%0A%0AThank%20you.", linkLabel: "Email E2E team" },
-                ].map(({ emoji, rule, detail, link, linkLabel }) => (
+                  { emoji: "🚩", rule: "Report issues", detail: "Report misuse or inappropriate behaviour directly to the SAP Next Gen E2E team." },
+                ].map(({ emoji, rule, detail }) => (
                   <div key={rule} className="rounded-xl p-3 space-y-1"
                     style={{ backgroundColor: "#F5FAFF", border: "1px solid #EAF5FF" }}>
                     <div className="flex items-center gap-1.5">
@@ -1860,11 +1875,12 @@ function SignupPage({ onComplete, users, editMode = false, initialData = null, o
                       <span className="text-xs font-semibold text-[#002060]">{rule}</span>
                     </div>
                     <p className="text-xs text-[#445063] leading-relaxed">{detail}</p>
-                    {link && (
-                      <a href={link} target="_blank" rel="noreferrer" className="text-xs font-medium"
+                    {rule === "Report issues" && (
+                      <button onClick={() => setShowReportModal(true)}
+                        className="text-xs font-medium mt-1"
                         style={{ color: "#1B90FF" }}>
-                        {linkLabel} →
-                      </a>
+                        Contact SAP Next Gen E2E team →
+                      </button>
                     )}
                   </div>
                 ))}
@@ -1885,6 +1901,60 @@ function SignupPage({ onComplete, users, editMode = false, initialData = null, o
               style={{ backgroundColor: "#002060", color: "#fff" }}>
               I agree — continue <ArrowRight size={15} />
             </button>
+
+            {/* Report issues modal */}
+            {showReportModal && (
+              <div style={{
+                position: "fixed", inset: 0, zIndex: 300,
+                backgroundColor: "rgba(0,32,96,0.6)", backdropFilter: "blur(4px)",
+                display: "flex", alignItems: "center", justifyContent: "center", padding: 24,
+              }}>
+                <div className="rounded-2xl bg-white w-full max-w-md p-6 space-y-4"
+                  style={{ boxShadow: "0 24px 64px rgba(0,0,0,0.3)" }}>
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-semibold text-[#002060]" style={{ fontFamily: "'Fraunces', serif" }}>
+                      Report an Issue
+                    </h3>
+                    <button onClick={() => { setShowReportModal(false); setReportCopied(false); }}
+                      style={{ color: "#7C8896" }}><X size={16} /></button>
+                  </div>
+                  <p className="text-xs text-[#445063]">
+                    Copy the template below, then open a <span className="font-semibold text-[#002060]">new email in Outlook</span>, paste it in, fill in the details, and send it to <span className="font-semibold text-[#002060]">SAPnextgen@sap.com</span>.
+                  </p>
+                  <ol className="space-y-1">
+                    {["Click \"Copy to clipboard\" below.", "Open Outlook, create a new email, and paste the template into the body.", "Fill in the details where indicated.", "Send to SAPnextgen@sap.com."].map((s, i) => (
+                      <li key={i} className="flex gap-2 text-xs text-[#445063]">
+                        <span className="font-bold shrink-0" style={{ color: "#DF1278" }}>{i + 1}.</span>
+                        <span>{s}</span>
+                      </li>
+                    ))}
+                  </ol>
+                  <div className="rounded-xl p-4 text-xs font-mono leading-relaxed whitespace-pre-wrap overflow-y-auto"
+                    style={{ backgroundColor: "#F5FAFF", border: "1px solid #EAF5FF", color: "#002060", maxHeight: 220 }}>
+{`To: SAPnextgen@sap.com
+Subject: Connections Passport — Report an Issue
+
+Hi SAP Next Gen E2E Team,
+
+I would like to report the following issue with the Connections Passport program:
+
+[Please describe the issue here]
+
+Thank you.`}
+                  </div>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(`To: SAPnextgen@sap.com\nSubject: Connections Passport — Report an Issue\n\nHi SAP Next Gen E2E Team,\n\nI would like to report the following issue with the Connections Passport program:\n\n[Please describe the issue here]\n\nThank you.`)
+                        .then(() => { setReportCopied(true); setTimeout(() => setReportCopied(false), 3000); })
+                        .catch(() => {});
+                    }}
+                    className="w-full rounded-xl py-2.5 text-sm font-semibold flex items-center justify-center gap-2"
+                    style={{ backgroundColor: reportCopied ? "#EAF5FF" : "#002060", color: reportCopied ? "#1B90FF" : "#fff" }}>
+                    {reportCopied ? <><Check size={14} /> Copied!</> : <>📋 Copy to clipboard</>}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -1898,14 +1968,21 @@ function SignupPage({ onComplete, users, editMode = false, initialData = null, o
 
             <div>
               <label className="text-xs font-semibold text-[#002060] block mb-1">Full name</label>
-              <input value={form.name} onChange={e => update("name", e.target.value)}
+              {/* [SSO-INTEGRATION-POINT] Name is pre-filled and locked when provided by SSO */}
+              <input value={form.name} onChange={e => !ssoUser && update("name", e.target.value)}
                 placeholder="e.g. Jordan Lee"
+                readOnly={!!ssoUser}
                 className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-200"
-                style={{ borderColor: "#CFE6FA" }} />
+                style={{ borderColor: "#CFE6FA", backgroundColor: ssoUser ? "#F5FAFF" : "#fff", cursor: ssoUser ? "default" : "text" }} />
+              {ssoUser && (
+                <p className="text-[11px] text-[#7C8896] mt-1">
+                  ✓ Pre-filled from your SAP profile via SSO
+                </p>
+              )}
             </div>
 
             <div>
-              <label className="text-xs font-semibold text-[#002060] block mb-1">Role / Programme</label>
+              <label className="text-xs font-semibold text-[#002060] block mb-1">Role / Program</label>
               <select value={form.role} onChange={e => update("role", e.target.value)}
                 className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
                 style={{ borderColor: "#CFE6FA" }}>
@@ -2188,7 +2265,7 @@ function SignupPage({ onComplete, users, editMode = false, initialData = null, o
 
 /* ---------------------- Landing Page ---------------------- */
 
-function LandingPage({ onJoin }) {
+function LandingPage({ onJoin, ssoUser }) {
   return (
     <div className="flex-1 overflow-y-auto" style={{ backgroundColor: "#EAF5FF" }}>
       <div className="max-w-3xl mx-auto px-6 py-12 space-y-12">
@@ -2206,11 +2283,20 @@ function LandingPage({ onJoin }) {
           <p className="text-base text-[#445063] max-w-xl mx-auto leading-relaxed">
             Connections Passport matches SAP Next Gen talent across global offices for 30-minute coffee chats. Collect stamps, earn badges, and build a network that spans the globe.
           </p>
-          <button onClick={onJoin}
-            className="inline-flex items-center gap-2 rounded-full px-8 py-3.5 font-semibold text-sm mt-2"
-            style={{ backgroundColor: "#DF1278", color: "#fff", boxShadow: "0 4px 18px rgba(223,18,120,0.35)" }}>
-            <Coffee size={16} /> Apply now
-          </button>
+          {/* [SSO-INTEGRATION-POINT] Replace onClick with BTP XSUAA redirect when deployed */}
+          {ssoUser ? (
+            <div className="inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-medium mt-2"
+              style={{ backgroundColor: "#EAF5FF", color: "#002060", border: "1px solid #CFE6FA" }}>
+              <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />
+              Signed in as {ssoUser.name} · <button onClick={onJoin} className="font-semibold" style={{ color: "#DF1278" }}>Apply now →</button>
+            </div>
+          ) : (
+            <button onClick={onJoin}
+              className="inline-flex items-center gap-2 rounded-full px-8 py-3.5 font-semibold text-sm mt-2"
+              style={{ backgroundColor: "#DF1278", color: "#fff", boxShadow: "0 4px 18px rgba(223,18,120,0.35)" }}>
+              <LogIn size={16} /> Sign in with SAP
+            </button>
+          )}
         </div>
 
         {/* What's in it for me */}
@@ -2355,10 +2441,11 @@ function LandingPage({ onJoin }) {
         {/* Bottom CTA */}
         <div className="text-center space-y-3 pb-4">
           <p className="text-sm text-[#445063]">Ready to start collecting stamps?</p>
+          {/* [SSO-INTEGRATION-POINT] Replace onClick with BTP XSUAA redirect when deployed */}
           <button onClick={onJoin}
             className="inline-flex items-center gap-2 rounded-full px-8 py-3.5 font-semibold text-sm"
             style={{ backgroundColor: "#002060", color: "#fff", boxShadow: "0 4px 14px rgba(0,32,96,0.25)" }}>
-            <ArrowRight size={16} /> Get started
+            {ssoUser ? <><ArrowRight size={16} /> Apply now</> : <><LogIn size={16} /> Sign in with SAP</>}
           </button>
         </div>
 
@@ -2675,6 +2762,26 @@ export default function CoffeePassportApp() {
   const [notifications, setNotifications] = useState([]);
   const [celebrating, setCelebrating] = useState(false);
 
+  // [SSO-INTEGRATION-POINT] In production, ssoUser is populated after XSUAA OAuth2 token
+  // exchange via the BTP App Router. The token provides email, displayName, and optionally
+  // office/country from SAP People Profile. Replace the mock below with a real token fetch:
+  //   GET /api/userinfo  (proxied through App Router with Authorization: Bearer <token>)
+  // For now, mock as null (not signed in) and simulate login on the landing page.
+  const [ssoUser, setSsoUser] = useState(null);
+
+  // [SSO-INTEGRATION-POINT] Mock SAP SSO login — replace with BTP XSUAA redirect:
+  //   window.location.href = "/login" (App Router handles OAuth2 code flow)
+  function handleSSOLogin() {
+    // Simulate a successful SSO response with a mock SAP employee profile
+    setSsoUser({
+      name: "Your Name",         // From XSUAA token: given_name + family_name
+      email: "user@sap.com",     // From XSUAA token: email (must be @sap.com)
+      country: "Germany",        // From SAP People Profile API
+      office: "Walldorf",        // From SAP People Profile API
+    });
+    setView("signup");
+  }
+
   const currentUser = users.find(u => u.id === currentUserId);
 
   // Find the first unacknowledged incoming match for the current user (they are userB)
@@ -2836,7 +2943,7 @@ export default function CoffeePassportApp() {
         {/* Nav tabs */}
         <div className="hidden sm:flex items-center gap-1 rounded-full p-1"
           style={{ backgroundColor: "#001642" }}>
-          {["landing","dashboard","passport","signup"].map(v => (
+          {(hasSignedUp ? ["dashboard","passport","signup"] : ["landing","dashboard","passport","signup"]).map(v => (
             <button key={v} onClick={() => { setView(v); setIsAdmin(false); }}
               className="px-3 py-1.5 rounded-full text-xs font-medium capitalize transition-colors"
               style={{
@@ -2848,15 +2955,14 @@ export default function CoffeePassportApp() {
           ))}
         </div>
         <div className="flex items-center gap-2">
-          {/* [SSO-INTEGRATION-POINT] Replace with real SAP SSO identity */}
-          <select
-            value={currentUserId}
-            onChange={e => setCurrentUserId(Number(e.target.value))}
-            className="text-xs rounded-full px-3 py-1.5 border-none outline-none"
-            style={{ backgroundColor: "#0A3D8F", color: "#D1EFFF" }}
-            title="Demo: view as another user">
-            {users.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
-          </select>
+          {/* Show signed-in user name when logged in, otherwise nothing */}
+          {ssoUser && (
+            <span className="text-xs rounded-full px-3 py-1.5"
+              style={{ backgroundColor: "#0A3D8F", color: "#D1EFFF" }}>
+              {ssoUser.name}
+            </span>
+          )}
+          {/* [SSO-INTEGRATION-POINT] Admin access — in production gate this by XSUAA "Admin" role from the token */}
           <button onClick={() => setIsAdmin(a => !a)}
             className="flex items-center gap-1.5 text-xs rounded-full px-3 py-1.5 font-medium transition-colors"
             style={{ backgroundColor: isAdmin ? "#DF1278" : "#0A3D8F", color: "#fff" }}>
@@ -2871,13 +2977,14 @@ export default function CoffeePassportApp() {
 
         {/* Landing page */}
         {view === "landing" && !isAdmin && (
-          <LandingPage onJoin={() => setView("signup")} />
+          <LandingPage onJoin={handleSSOLogin} ssoUser={ssoUser} />
         )}
 
         {/* Signup / Profile page */}
         {view === "signup" && !isAdmin && (
           <SignupPage
             users={users}
+            ssoUser={ssoUser}
             editMode={hasSignedUp}
             isPaused={currentUser?.paused}
             onPause={hasSignedUp ? handlePause : undefined}
