@@ -146,7 +146,7 @@ const INTEREST_CATEGORIES = [
   {
     label: "Lifestyle & Wellbeing",
     emoji: "🌿",
-    items: ["Travel", "Running", "Fitness", "Cooking", "Mindfulness", "Sustainability", "Yoga", "Hiking"],
+    items: ["Travel", "Running", "Fitness", "Cooking", "Mindfulness", "Sustainability", "Yoga", "Hiking", "Football", "Basketball", "Cycling", "Swimming", "Tennis", "Martial Arts", "Mental Health", "Nutrition"],
   },
   {
     label: "Learning & Community",
@@ -158,8 +158,7 @@ const INTEREST_CATEGORIES = [
 const INTEREST_POOL = INTEREST_CATEGORIES.flatMap(c => c.items);
 
 const ROLES = [
-  "STAR Associate", "iXp Intern", "getX Trainee", "Academy Associate",
-  "iXp Fast Track Associate", "Early Talent Analyst",
+  "STAR Student", "iXp Intern", "Academy Associate", "getX Early Talent",
 ];
 
 const FIRST_NAMES = ["Maya", "Lucas", "Amara", "Felix", "Priya", "Noah", "Sofia", "Kenji",
@@ -1713,13 +1712,14 @@ const SIGNUP_STEPS = ["Privacy & Consent", "Profile", "Interests", "Review"];
 
 function SignupPage({ onComplete, users, editMode = false, initialData = null, onPause, onDelete, isPaused }) {
   const [step, setStep] = useState(editMode ? 1 : 0);
-  const [consent, setConsent] = useState({ dataProcessing: false, visibility: false });
+  const [consent, setConsent] = useState({ dataProcessing: false, guidelines: false });
   const [form, setForm] = useState(initialData || {
     name: "", role: ROLES[0],
     office: OFFICES[0].office, country: OFFICES[0].country, region: OFFICES[0].region,
     interests: [],
   });
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [otherInterest, setOtherInterest] = useState("");
 
   // Reset form if initialData changes (e.g. switching users)
   React.useEffect(() => {
@@ -1744,7 +1744,7 @@ function SignupPage({ onComplete, users, editMode = false, initialData = null, o
     }));
   }
 
-  const consentValid = consent.dataProcessing && consent.visibility;
+  const consentValid = consent.dataProcessing && consent.guidelines;
   const step1Valid = form.name.trim().length > 1;
   const step2Valid = form.interests.length >= 2;
 
@@ -1768,6 +1768,21 @@ function SignupPage({ onComplete, users, editMode = false, initialData = null, o
               : "Connect with SAP Next Gen across SAP's global offices — one chat at a time."}
           </p>
         </div>
+
+        {/* What's in it for me — shown on signup only, before steps begin */}
+        {!editMode && (
+          <div className="rounded-2xl p-5 mb-6" style={{ backgroundColor: "#002060" }}>
+            <div className="text-xs font-semibold uppercase tracking-widest text-[#89D1FF] mb-3"
+              style={{ fontFamily: "'IBM Plex Mono', monospace" }}>
+              What's in it for you
+            </div>
+            <div className="space-y-2.5 text-xs text-white">
+              <div className="flex gap-2.5"><span className="text-[#DF1278] font-bold shrink-0">01</span><span>Get matched with Early Talent from across SAP's global offices and regions.</span></div>
+              <div className="flex gap-2.5"><span className="text-[#DF1278] font-bold shrink-0">02</span><span>Have a coffee chat, confirm you met, and earn passport stamps for every connection.</span></div>
+              <div className="flex gap-2.5"><span className="text-[#DF1278] font-bold shrink-0">03</span><span>Collect stamps from different regions and offices to unlock milestone badges.</span></div>
+            </div>
+          </div>
+        )}
 
         {/* Step indicator */}
         <div className="flex items-center justify-center gap-2 mb-8">
@@ -1797,12 +1812,22 @@ function SignupPage({ onComplete, users, editMode = false, initialData = null, o
               <h2 className="font-semibold text-[#002060]" style={{ fontFamily: "'Fraunces', serif" }}>
                 Privacy &amp; Data Notice
               </h2>
-              <div className="rounded-xl p-4 space-y-3 text-xs text-[#445063] leading-relaxed"
-                style={{ backgroundColor: "#F5FAFF", border: "1px solid #EAF5FF" }}>
-                <p><span className="font-semibold text-[#002060]">What we collect:</span> Your name, SAP role, office location, and interests — used solely to match you with other SAP Next Gen participants.</p>
-                <p><span className="font-semibold text-[#002060]">Who can see it:</span> Your name, role, office, and milestone badges are visible to other participants. Your full passport stamp details are private to you. Admins can see match history for programme management purposes.</p>
-                <p><span className="font-semibold text-[#002060]">How long we keep it:</span> Your data is retained for the duration of your participation. You can permanently delete your account at any time from your Profile page.</p>
-                <p><span className="font-semibold text-[#002060]">Your rights:</span> Under GDPR and applicable data protection laws, you have the right to access, correct, and delete your personal data. Deleting your account removes your profile and match history. Stamps you awarded to others remain as a record of genuine connections that took place.</p>
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { emoji: "📋", title: "What we collect", body: "Name, role, office & interests — used only for matching." },
+                  { emoji: "👥", title: "Who can see it", body: "Other participants see your name, role, office & badges. Stamps are private." },
+                  { emoji: "🗓️", title: "How long we keep it", body: "For the duration of your participation. Delete anytime from your profile." },
+                  { emoji: "⚖️", title: "Your rights", body: "Access, correct or delete your data at any time under GDPR." },
+                ].map(({ emoji, title, body }) => (
+                  <div key={title} className="rounded-xl p-3 space-y-1"
+                    style={{ backgroundColor: "#F5FAFF", border: "1px solid #EAF5FF" }}>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-sm">{emoji}</span>
+                      <span className="text-xs font-semibold text-[#002060]">{title}</span>
+                    </div>
+                    <p className="text-xs text-[#445063] leading-relaxed">{body}</p>
+                  </div>
+                ))}
               </div>
               <div className="space-y-3 pt-1">
                 <label className="flex items-start gap-3 cursor-pointer">
@@ -1810,15 +1835,47 @@ function SignupPage({ onComplete, users, editMode = false, initialData = null, o
                     onChange={e => setConsent(c => ({ ...c, dataProcessing: e.target.checked }))}
                     className="mt-0.5 shrink-0 accent-[#002060]" />
                   <span className="text-xs text-[#445063] leading-relaxed">
-                    I have read and understood the privacy notice. I consent to SAP processing my personal data for the purpose of the Connections Passport matching programme. <span className="text-[#DF1278] font-semibold">*</span>
+                    I have read the privacy notice and consent to SAP collecting and using my name, role, office, and interests for the Connections Passport matching programme. My profile will be visible to other participants. <span className="text-[#DF1278] font-semibold">*</span>
                   </span>
                 </label>
+              </div>
+            </div>
+
+            {/* Community Guidelines */}
+            <div className="rounded-2xl bg-white p-6 space-y-4" style={{ border: "1px solid #CFE6FA" }}>
+              <h2 className="font-semibold text-[#002060]" style={{ fontFamily: "'Fraunces', serif" }}>
+                Community Guidelines
+              </h2>
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { emoji: "🤝", rule: "Be respectful", detail: "Professional, inclusive behaviour only." },
+                  { emoji: "📅", rule: "Show up", detail: "Schedule your chat within the 7-day window." },
+                  { emoji: "✅", rule: "Be honest", detail: "Only confirm a chat once it's actually happened." },
+                  { emoji: "🚩", rule: "Report issues", detail: "Report misuse or inappropriate behaviour directly to the SAP Next Gen E2E team.", link: "mailto:SAPnextgen@sap.com?subject=Connections%20Passport%20%E2%80%94%20Report%20an%20Issue&body=Hi%20SAP%20Next%20Gen%20E2E%20Team%2C%0A%0AI%20would%20like%20to%20report%20the%20following%20issue%20with%20the%20Connections%20Passport%20programme%3A%0A%0A%5BPlease%20describe%20the%20issue%20here%5D%0A%0AThank%20you.", linkLabel: "Email E2E team" },
+                ].map(({ emoji, rule, detail, link, linkLabel }) => (
+                  <div key={rule} className="rounded-xl p-3 space-y-1"
+                    style={{ backgroundColor: "#F5FAFF", border: "1px solid #EAF5FF" }}>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-sm">{emoji}</span>
+                      <span className="text-xs font-semibold text-[#002060]">{rule}</span>
+                    </div>
+                    <p className="text-xs text-[#445063] leading-relaxed">{detail}</p>
+                    {link && (
+                      <a href={link} target="_blank" rel="noreferrer" className="text-xs font-medium"
+                        style={{ color: "#1B90FF" }}>
+                        {linkLabel} →
+                      </a>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <div className="space-y-3 pt-1">
                 <label className="flex items-start gap-3 cursor-pointer">
-                  <input type="checkbox" checked={consent.visibility}
-                    onChange={e => setConsent(c => ({ ...c, visibility: e.target.checked }))}
+                  <input type="checkbox" checked={consent.guidelines}
+                    onChange={e => setConsent(c => ({ ...c, guidelines: e.target.checked }))}
                     className="mt-0.5 shrink-0 accent-[#002060]" />
                   <span className="text-xs text-[#445063] leading-relaxed">
-                    I understand that my name, role, office, and earned milestone badges will be visible to other programme participants. <span className="text-[#DF1278] font-semibold">*</span>
+                    I agree to follow the Community Guidelines. <span className="text-[#DF1278] font-semibold">*</span>
                   </span>
                 </label>
               </div>
@@ -1838,10 +1895,6 @@ function SignupPage({ onComplete, users, editMode = false, initialData = null, o
             <h2 className="font-semibold text-[#002060]" style={{ fontFamily: "'Fraunces', serif" }}>
               Tell us about yourself
             </h2>
-            <p className="text-xs text-[#7C8896] -mt-3">
-              {/* [SSO-INTEGRATION-POINT] In production these fields pre-fill from SAP People Profile after SSO login */}
-              In production, these details would be pulled automatically from your SAP profile.
-            </p>
 
             <div>
               <label className="text-xs font-semibold text-[#002060] block mb-1">Full name</label>
@@ -2014,6 +2067,44 @@ function SignupPage({ onComplete, users, editMode = false, initialData = null, o
                     </div>
                   </div>
                 ))}
+
+                {/* Other — free text */}
+                <div>
+                  <div className="flex items-center gap-2 mb-2.5">
+                    <span className="text-base">✏️</span>
+                    <span className="text-xs font-semibold uppercase tracking-widest text-[#7C8896]"
+                      style={{ fontFamily: "'IBM Plex Mono', monospace" }}>
+                      Other
+                    </span>
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      value={otherInterest}
+                      onChange={e => setOtherInterest(e.target.value)}
+                      onKeyDown={e => {
+                        if (e.key === "Enter" && otherInterest.trim() && form.interests.length < 10) {
+                          toggleInterest(otherInterest.trim());
+                          setOtherInterest("");
+                        }
+                      }}
+                      placeholder="Type your own and press Enter…"
+                      className="flex-1 rounded-full border px-3.5 py-1.5 text-xs outline-none focus:ring-2 focus:ring-blue-200"
+                      style={{ borderColor: "#D1EFFF" }}
+                    />
+                    <button
+                      onClick={() => {
+                        if (otherInterest.trim() && form.interests.length < 10) {
+                          toggleInterest(otherInterest.trim());
+                          setOtherInterest("");
+                        }
+                      }}
+                      disabled={!otherInterest.trim() || form.interests.length >= 10}
+                      className="rounded-full px-3.5 py-1.5 text-xs font-medium disabled:opacity-40"
+                      style={{ backgroundColor: "#002060", color: "#fff" }}>
+                      Add
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -2076,21 +2167,6 @@ function SignupPage({ onComplete, users, editMode = false, initialData = null, o
               </div>
             </div>
 
-            {/* What to expect — only on initial signup */}
-            {!editMode && (
-              <div className="rounded-2xl p-5" style={{ backgroundColor: "#002060" }}>
-                <div className="text-xs font-semibold uppercase tracking-widest text-[#89D1FF] mb-3"
-                  style={{ fontFamily: "'IBM Plex Mono', monospace" }}>
-                  What happens next
-                </div>
-                <div className="space-y-2.5 text-xs text-white">
-                  <div className="flex gap-2.5"><span className="text-[#DF1278] font-bold shrink-0">01</span><span>You'll be matched with Early Talent from across SAP's offices and regions.</span></div>
-                  <div className="flex gap-2.5"><span className="text-[#DF1278] font-bold shrink-0">02</span><span>Schedule a coffee chat, confirm once you've met, and earn passport stamps.</span></div>
-                  <div className="flex gap-2.5"><span className="text-[#DF1278] font-bold shrink-0">03</span><span>Collect stamps from different regions and offices to unlock milestone badges.</span></div>
-                </div>
-              </div>
-            )}
-
             <div className="flex gap-3">
               <button onClick={() => setStep(2)}
                 className="flex-1 rounded-xl py-3 font-semibold text-sm border"
@@ -2110,7 +2186,188 @@ function SignupPage({ onComplete, users, editMode = false, initialData = null, o
   );
 }
 
-/* ---------------------- Admin Dashboard ---------------------- */
+/* ---------------------- Landing Page ---------------------- */
+
+function LandingPage({ onJoin }) {
+  return (
+    <div className="flex-1 overflow-y-auto" style={{ backgroundColor: "#EAF5FF" }}>
+      <div className="max-w-3xl mx-auto px-6 py-12 space-y-12">
+
+        {/* Hero */}
+        <div className="text-center space-y-4">
+          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-2"
+            style={{ backgroundColor: "#002060" }}>
+            <Coffee size={30} color="#DF1278" />
+          </div>
+          <h1 className="text-4xl font-semibold text-[#002060]"
+            style={{ fontFamily: "'Fraunces', serif", lineHeight: 1.15 }}>
+            Meet your next colleague.<br />Anywhere in the world.
+          </h1>
+          <p className="text-base text-[#445063] max-w-xl mx-auto leading-relaxed">
+            Connections Passport matches SAP Next Gen talent across global offices for 30-minute coffee chats. Collect stamps, earn badges, and build a network that spans the globe.
+          </p>
+          <button onClick={onJoin}
+            className="inline-flex items-center gap-2 rounded-full px-8 py-3.5 font-semibold text-sm mt-2"
+            style={{ backgroundColor: "#DF1278", color: "#fff", boxShadow: "0 4px 18px rgba(223,18,120,0.35)" }}>
+            <Coffee size={16} /> Apply now
+          </button>
+        </div>
+
+        {/* What's in it for me */}
+        <div>
+          <div className="text-center mb-6">
+            <span className="text-xs font-semibold uppercase tracking-widest text-[#7C8896]"
+              style={{ fontFamily: "'IBM Plex Mono', monospace" }}>
+              How it works
+            </span>
+          </div>
+          <div className="grid grid-cols-3 gap-4">
+            {[
+              { emoji: "🎰", step: "01", title: "Get matched", body: "Spin the matcher to find someone new. Every match is a different office or region." },
+              { emoji: "☕", step: "02", title: "Have a chat", body: "Schedule a 30-min coffee chat. An AI icebreaker helps you kick things off." },
+              { emoji: "🎖️", step: "03", title: "Earn stamps", body: "Both confirm the chat happened and earn a passport stamp. Collect them all." },
+            ].map(({ emoji, step, title, body }) => (
+              <div key={step} className="rounded-2xl p-5 text-center space-y-2"
+                style={{ backgroundColor: "#fff", border: "1px solid #CFE6FA" }}>
+                <div className="text-3xl">{emoji}</div>
+                <div className="text-xs font-bold" style={{ color: "#DF1278", fontFamily: "'IBM Plex Mono', monospace" }}>{step}</div>
+                <div className="font-semibold text-sm text-[#002060]">{title}</div>
+                <p className="text-xs text-[#445063] leading-relaxed">{body}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Passport stamps preview */}
+        <div>
+          <h2 className="text-xl font-semibold text-[#002060] text-center mb-4"
+            style={{ fontFamily: "'Fraunces', serif" }}>
+            Collect passport stamps
+          </h2>
+          <div className="rounded-2xl overflow-hidden"
+            style={{ background: "linear-gradient(135deg, #001642 0%, #002060 60%, #0A3D8F 100%)", boxShadow: "0 8px 32px rgba(0,32,96,0.2)" }}>
+            <div className="px-6 py-4 border-b" style={{ borderColor: "rgba(255,255,255,0.08)" }}>
+              <div className="text-[10px] tracking-[0.2em] uppercase font-medium mb-1"
+                style={{ color: "#89D1FF", fontFamily: "'IBM Plex Mono', monospace" }}>
+                SAP Next Gen · Digital Passport
+              </div>
+              <div className="text-lg font-semibold text-white" style={{ fontFamily: "'Fraunces', serif" }}>Your Name Here</div>
+              <div className="text-xs text-white opacity-60">iXp Intern · Berlin</div>
+            </div>
+            <div className="px-6 py-5 space-y-5">
+              {/* Region stamps */}
+              <div>
+                <div className="text-[10px] uppercase tracking-widest mb-3"
+                  style={{ color: "rgba(137,209,255,0.6)", fontFamily: "'IBM Plex Mono', monospace" }}>Regions</div>
+                <div className="flex flex-wrap gap-3">
+                  {[
+                    { label: "EMEA", bg: "#1B90FF", text: "#fff", count: 3 },
+                    { label: "APAC", bg: "#89D1FF", text: "#002060", count: 2 },
+                    { label: "NA",   bg: "#DF1278", text: "#fff", count: 1 },
+                  ].map(r => (
+                    <div key={r.label} className="flex flex-col items-center justify-between rounded-xl p-3 gap-2"
+                      style={{ backgroundColor: r.bg, minWidth: 80, minHeight: 90,
+                        transform: `rotate(${r.label === "EMEA" ? -2 : r.label === "APAC" ? 1 : -3}deg)`,
+                        border: "2px double rgba(255,255,255,0.3)", boxShadow: "0 2px 8px rgba(0,32,96,0.25)" }}>
+                      <Globe2 size={22} color={r.text} opacity={0.8} />
+                      <div className="text-center">
+                        <div className="text-[10px] font-bold uppercase tracking-wide"
+                          style={{ color: r.text, fontFamily: "'IBM Plex Mono', monospace" }}>{r.label}</div>
+                        <div className="text-[9px] opacity-70" style={{ color: r.text }}>{r.count} chat{r.count > 1 ? "s" : ""}</div>
+                      </div>
+                    </div>
+                  ))}
+                  {/* Ghost stamp */}
+                  <div className="flex flex-col items-center justify-center rounded-xl p-3 gap-2"
+                    style={{ minWidth: 80, minHeight: 90, border: "2px dashed rgba(255,255,255,0.15)", opacity: 0.35 }}>
+                    <Globe2 size={22} color="#89D1FF" />
+                    <div className="text-[10px] uppercase tracking-wide text-center"
+                      style={{ color: "#89D1FF", fontFamily: "'IBM Plex Mono', monospace" }}>MEE</div>
+                  </div>
+                </div>
+              </div>
+              {/* Office stamps */}
+              <div>
+                <div className="text-[10px] uppercase tracking-widest mb-3"
+                  style={{ color: "rgba(137,209,255,0.6)", fontFamily: "'IBM Plex Mono', monospace" }}>Offices</div>
+                <div className="flex flex-wrap gap-3">
+                  {[
+                    { label: "Walldorf",       country: "Germany",        count: 2 },
+                    { label: "Singapore",       country: "Singapore",      count: 1 },
+                    { label: "Palo Alto",       country: "United States",  count: 1 },
+                    { label: "Newtown Square",  country: "United States",  count: 1 },
+                    { label: "Tokyo",           country: "Japan",          count: 1 },
+                    { label: "Dublin",          country: "Ireland",        count: 1 },
+                    { label: "Sydney",          country: "Australia",      count: 2 },
+                    { label: "São Paulo",       country: "Brazil",         count: 1 },
+                    { label: "Dubai",           country: "UAE",            count: 1 },
+                    { label: "London",          country: "United Kingdom", count: 1 },
+                    { label: "Bangalore",       country: "India",          count: 1 },
+                    { label: "Vancouver",       country: "Canada",         count: 1 },
+                  ].map((o, i) => (
+                    <div key={o.label} className="flex flex-col items-center justify-between rounded-xl p-3 gap-2"
+                      style={{ backgroundColor: "#002060", minWidth: 80, minHeight: 90,
+                        transform: `rotate(${[-2, 1, 3, -1, 2, -3, 1, -2, 3, -1, 2, -3][i % 12]}deg)`,
+                        border: "2px double rgba(255,255,255,0.15)", boxShadow: "0 2px 8px rgba(0,32,96,0.25)" }}>
+                      <span style={{ fontSize: 26, lineHeight: 1 }}>{COUNTRY_EMOJI[o.country] || "🌐"}</span>
+                      <div className="text-center">
+                        <div className="text-[10px] font-bold uppercase tracking-wide"
+                          style={{ color: "#89D1FF", fontFamily: "'IBM Plex Mono', monospace" }}>{o.label}</div>
+                        <div className="text-[9px] opacity-60" style={{ color: "#89D1FF" }}>{o.count} chat{o.count > 1 ? "s" : ""}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Badges teaser */}
+        <div>
+          <h2 className="text-xl font-semibold text-[#002060] text-center mb-4"
+            style={{ fontFamily: "'Fraunces', serif" }}>
+            Earn milestone badges
+          </h2>
+          <div className="rounded-2xl p-6" style={{ backgroundColor: "#fff", border: "1px solid #CFE6FA" }}>
+            <div className="flex justify-center flex-wrap gap-3">
+              {[
+                { icon: Coffee,    name: "First Connection" },
+                { icon: Globe2,    name: "EMEA Explorer" },
+                { icon: Globe2,    name: "Global Explorer" },
+                { icon: Building2, name: "Office Hopper" },
+                { icon: Award,     name: "Passport Pro" },
+                { icon: Sparkles,  name: "Stamp Collector" },
+              ].map(({ icon: Icon, name }) => (
+                <div key={name} className="flex flex-col items-center gap-1.5 rounded-xl p-3 w-24"
+                  style={{ backgroundColor: "#EAF5FF", border: "1px solid #D1EFFF" }}>
+                  <div className="w-9 h-9 rounded-full flex items-center justify-center"
+                    style={{ backgroundColor: "#002060" }}>
+                    <Icon size={16} color="#89D1FF" />
+                  </div>
+                  <span className="text-[10px] font-medium text-center text-[#002060] leading-tight">{name}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Bottom CTA */}
+        <div className="text-center space-y-3 pb-4">
+          <p className="text-sm text-[#445063]">Ready to start collecting stamps?</p>
+          <button onClick={onJoin}
+            className="inline-flex items-center gap-2 rounded-full px-8 py-3.5 font-semibold text-sm"
+            style={{ backgroundColor: "#002060", color: "#fff", boxShadow: "0 4px 14px rgba(0,32,96,0.25)" }}>
+            <ArrowRight size={16} /> Get started
+          </button>
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
+
 
 function AdminPanel({ users, matches }) {
   const optedIn = users.filter(u => u.optedIn).length;
@@ -2412,7 +2669,7 @@ export default function CoffeePassportApp() {
 
   const [currentUserId, setCurrentUserId] = useState(1);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [view, setView] = useState("signup");
+  const [view, setView] = useState("landing");
   const [signedUpIds, setSignedUpIds] = useState(new Set());
   const hasSignedUp = signedUpIds.has(currentUserId);
   const [notifications, setNotifications] = useState([]);
@@ -2579,14 +2836,14 @@ export default function CoffeePassportApp() {
         {/* Nav tabs */}
         <div className="hidden sm:flex items-center gap-1 rounded-full p-1"
           style={{ backgroundColor: "#001642" }}>
-          {["dashboard","passport","signup"].map(v => (
+          {["landing","dashboard","passport","signup"].map(v => (
             <button key={v} onClick={() => { setView(v); setIsAdmin(false); }}
               className="px-3 py-1.5 rounded-full text-xs font-medium capitalize transition-colors"
               style={{
                 backgroundColor: view === v && !isAdmin ? "#1B90FF" : "transparent",
                 color: view === v && !isAdmin ? "#fff" : "#89D1FF",
               }}>
-              {v === "passport" ? "My Passport" : v === "signup" ? (hasSignedUp ? "Profile" : "Sign Up") : "Dashboard"}
+              {v === "passport" ? "My Passport" : v === "signup" ? (hasSignedUp ? "Profile" : "Sign Up") : v === "landing" ? "Home" : "Dashboard"}
             </button>
           ))}
         </div>
@@ -2612,7 +2869,12 @@ export default function CoffeePassportApp() {
       <div className="flex-1 overflow-hidden flex flex-col"
         style={{ display: "grid", gridTemplateRows: "1fr" }}>
 
-        {/* Passport full page */}
+        {/* Landing page */}
+        {view === "landing" && !isAdmin && (
+          <LandingPage onJoin={() => setView("signup")} />
+        )}
+
+        {/* Signup / Profile page */}
         {view === "signup" && !isAdmin && (
           <SignupPage
             users={users}
