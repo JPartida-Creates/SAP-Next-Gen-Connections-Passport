@@ -305,6 +305,7 @@ function seedUsers() {
       paused: false,
       deleted: false,
       consentGiven: true, // seeded users pre-consented for demo
+      isDemo: true, // excluded from matching for real signed-up users
       collectedRegions: {}, // region -> count
       collectedOffices: {}, // office -> count
       chatsCompleted: 0,
@@ -418,13 +419,16 @@ function scoreCandidate(user, candidate) {
 
 function findMatchCandidates(users, matches, currentUser, excludeIds = []) {
   const priorIds = getPriorMatchedUserIds(matches, currentUser.id);
+  // Real users only match with other real users; demo seed data is excluded
+  const realUser = !currentUser.isDemo;
   const candidates = users.filter((u) =>
     u.id !== currentUser.id &&
     u.optedIn &&
     !u.paused &&
     !u.deleted &&
     !priorIds.has(u.id) &&
-    !excludeIds.includes(u.id)
+    !excludeIds.includes(u.id) &&
+    (realUser ? !u.isDemo : true)
   );
   return candidates
     .map((c) => ({ candidate: c, score: scoreCandidate(currentUser, c) }))
@@ -980,7 +984,7 @@ function MatchPanel({ users, matches, currentUser, onAccept, onReshuffle, reshuf
               <div className="flex flex-col items-center justify-center h-44 gap-2">
                 <Users size={24} color="#7C8896" />
                 <div className="text-[10px] text-[#7C8896] text-center px-4">
-                  No new candidates right now.<br />Check back soon.
+                  No colleagues to match with yet.<br />You'll see suggestions once others join.
                 </div>
               </div>
             ) : (
@@ -1110,7 +1114,9 @@ function MatchPanel({ users, matches, currentUser, onAccept, onReshuffle, reshuf
               </div>
             ) : icebreakerError ? (
               <div className="flex items-center justify-between">
-                <span className="text-xs text-[#7C8896]">Couldn't generate a prompt.</span>
+                <span className="text-xs text-[#DF1278]">
+                  {import.meta.env.VITE_ANTHROPIC_API_KEY ? "Couldn't reach AI — check your connection." : "AI icebreakers unavailable (no API key configured)."}
+                </span>
                 <button onClick={() => {
                   setIcebreakerError(false);
                   setIcebreakerLoading(true);
@@ -1397,7 +1403,9 @@ ${myName}
                 )}
                 {icebreakerState?.error && (
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] text-[#7C8896]">Couldn't generate.</span>
+                    <span className="text-[10px]" style={{ color: "#DF1278" }}>
+                      {import.meta.env.VITE_ANTHROPIC_API_KEY ? "Couldn't reach AI — check connection." : "AI unavailable (no API key)."}
+                    </span>
                     <button onClick={() => fetchIcebreaker(m.id, other)}
                       className="text-[10px] font-medium rounded-full px-2 py-0.5"
                       style={{ backgroundColor: "#1B90FF", color: "#fff" }}>Retry</button>
