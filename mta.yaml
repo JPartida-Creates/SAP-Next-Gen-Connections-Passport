@@ -41,7 +41,7 @@ modules:
         - npm run build
       supported-platforms: []
 
-  # ── CAP Node.js Service (HANA persistence) ─────────────────────────────────
+  # ── CAP Node.js Service (direct HANA connection via user-provided service) ──
   - name: connections-passport-srv
     type: nodejs
     path: cap
@@ -52,7 +52,7 @@ modules:
       builder: npm
     requires:
       - name: connections-passport-xsuaa
-      - name: connections-passport-hdi
+      - name: connections-passport-db
     provides:
       - name: srv-api
         properties:
@@ -69,12 +69,8 @@ resources:
       path: ./xs-security.json
       service-name: connections-passport-xsuaa
 
-  # ── HANA HDI Container (tables auto-created from CDS schema on first boot) ─
-  - name: connections-passport-hdi
-    type: com.sap.xs.hdi-container
+  # ── HANA direct connection (user-provided service created via cf cups) ──────
+  - name: connections-passport-db
+    type: org.cloudfoundry.existing-service
     parameters:
-      service: hana
-      service-plan: hdi-shared
-      service-name: connections-passport-hdi
-    properties:
-      hdi-service-name: "${service-name}"
+      service-name: connections-passport-db

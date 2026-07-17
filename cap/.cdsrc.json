@@ -2,9 +2,6 @@
   "requires": {
     "auth": {
       "kind": "xsuaa"
-    },
-    "db": {
-      "kind": "hana"
     }
   }
 }

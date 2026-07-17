@@ -1,294 +1,314 @@
 "use strict";
-const cds = require("@sap/cds");
+const cds  = require("@sap/cds");
+const hdb  = require("hdb");
+const { getCredentials, ensureTables } = require("../db-init");
 
 const MAX_RESHUFFLES_PER_DAY = 3;
-const MAX_MATCHES_PER_DAY = 3;
-const MATCH_TTL_MS = 7 * 24 * 3600 * 1000; // 7 days
+const MAX_MATCHES_PER_DAY    = 3;
+const MATCH_TTL_MS           = 7 * 24 * 3600 * 1000;
 
-module.exports = cds.service.impl(async function (srv) {
-  const { Users, Matches } = this.entities;
+// ── DB connection pool (single persistent connection) ──────────────────────
+let _client = null;
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
+async function getClient() {
+  if (_client && _client.readyState === "connected") return _client;
+  const creds = getCredentials();
+  _client = hdb.createClient({
+    host:                   creds.host,
+    port:                   parseInt(creds.port || 443),
+    user:                   creds.user,
+    password:               creds.password,
+    schema:                 creds.schema,
+    encrypt:                true,
+    sslValidateCertificate: true,
+  });
+  await new Promise((resolve, reject) => {
+    _client.connect(err => err ? reject(err) : resolve());
+  });
+  return _client;
+}
 
-  function callerEmail(req) {
-    const email = req.user && req.user.id;
-    if (!email) req.reject(401, "Unauthenticated");
-    return email;
-  }
+function exec(sql, params = []) {
+  return new Promise(async (resolve, reject) => {
+    const client = await getClient().catch(reject);
+    if (!client) return;
+    client.exec(sql, params, (err, rows) => err ? reject(err) : resolve(rows));
+  });
+}
 
-  function todayStr() {
-    return new Date().toDateString(); // matches React's todayStr()
-  }
+// ── Helpers ────────────────────────────────────────────────────────────────
 
-  function parseJSON(str, fallback) {
-    if (!str) return fallback;
-    if (typeof str !== "string") return str;
-    try { return JSON.parse(str); } catch { return fallback; }
-  }
+function callerEmail(req) {
+  const email = req.user && req.user.id;
+  if (!email) req.reject(401, "Unauthenticated");
+  return email;
+}
 
-  // Mirror of recalcBadges from ConnectionsPassport.jsx
-  function recalcBadges(user) {
+function todayStr() { return new Date().toDateString(); }
+
+function parseJSON(str, fallback) {
+  if (!str) return fallback;
+  if (typeof str !== "string") return str;
+  try { return JSON.parse(str); } catch { return fallback; }
+}
+
+function rowToUser(r) {
+  if (!r) return null;
+  return {
+    email:                r.EMAIL,
+    name:                 r.NAME,
+    role:                 r.ROLE,
+    office:               r.OFFICE,
+    country:              r.COUNTRY,
+    region:               r.REGION,
+    interests:            r.INTERESTS,
+    optedIn:              r.OPTEDIN,
+    paused:               r.PAUSED,
+    deleted:              r.DELETED,
+    consentGiven:         r.CONSENTGIVEN,
+    collectedRegions:     r.COLLECTEDREGIONS || "{}",
+    collectedOffices:     r.COLLECTEDOFFICES || "{}",
+    chatsCompleted:       r.CHATSCOMPLETED || 0,
+    badges:               r.BADGES || "[]",
+    lastReshuffleDate:    r.LASTRESHUFFLEDATE,
+    reshufflesUsedToday:  r.RESHUFFLESUSEDTODAY || 0,
+    lastMatchAcceptDate:  r.LASTMATCHACCEPTDATE,
+    matchesAcceptedToday: r.MATCHESACCEPTEDTODAY || 0,
+    joinedAt:             r.JOINEDAT,
+  };
+}
+
+function rowToMatch(r) {
+  if (!r) return null;
+  return {
+    id:              r.ID,
+    userAEmail:      r.USERAMAIL,
+    userBEmail:      r.USERBMAIL,
+    status:          r.STATUS,
+    confirmedA:      r.CONFIRMEDA,
+    confirmedB:      r.CONFIRMEDB,
+    acknowledgedByB: r.ACKNOWLEDGEDBYB,
+    removed:         r.REMOVED,
+    createdAt:       r.CREATEDAT,
+    expiresAt:       r.EXPIRESAT,
+  };
+}
+
+// Mirror of recalcBadges from ConnectionsPassport.jsx
+function recalcBadges(user) {
+  const regions = parseJSON(user.collectedRegions, {});
+  const offices = parseJSON(user.collectedOffices, {});
+  const regionCount = Object.keys(regions).length;
+  const officeCount = Object.keys(offices).length;
+  const chats = user.chatsCompleted || 0;
+  const totalStamps = Object.values(regions).reduce((s,c)=>s+c,0)
+                    + Object.values(offices).reduce((s,c)=>s+c,0);
+  const badges = [];
+  if (chats >= 1)  badges.push("First Connection");
+  if (chats >= 5)  badges.push("5 Chats Completed");
+  if (chats >= 10) badges.push("10 Chats Completed");
+  if (chats >= 20) badges.push("20 Chats Completed");
+  if (regions["EMEA"]) badges.push("EMEA Explorer");
+  if (regions["APAC"]) badges.push("APAC Explorer");
+  if (regions["NA"])   badges.push("NA Explorer");
+  if (regions["MEE"])  badges.push("MEE Explorer");
+  if (regionCount >= 3) badges.push("3 Regions Collected");
+  if (regionCount >= 4) badges.push("Global Explorer");
+  if (officeCount >= 5)  badges.push("5 Offices Collected");
+  if (officeCount >= 10) badges.push("Office Hopper");
+  if (officeCount >= 14) badges.push("Stamp Collector");
+  if (totalStamps >= 10) badges.push("Passport Pro");
+  return badges;
+}
+
+async function awardStampsToUsers(emailA, emailB) {
+  const creds = getCredentials();
+  const schema = creds.schema;
+  const rows = await exec(
+    `SELECT * FROM "${schema}"."USERS" WHERE "EMAIL" IN (?,?)`, [emailA, emailB]
+  );
+  const userA = rowToUser(rows.find(r => r.EMAIL === emailA));
+  const userB = rowToUser(rows.find(r => r.EMAIL === emailB));
+  if (!userA || !userB) return;
+
+  function applyStamp(user, other) {
     const regions = parseJSON(user.collectedRegions, {});
     const offices = parseJSON(user.collectedOffices, {});
-    const regionCount = Object.keys(regions).length;
-    const officeCount = Object.keys(offices).length;
-    const chats = user.chatsCompleted || 0;
-    const totalStamps =
-      Object.values(regions).reduce((s, c) => s + c, 0) +
-      Object.values(offices).reduce((s, c) => s + c, 0);
-    const badges = [];
-    if (chats >= 1)  badges.push("First Connection");
-    if (chats >= 5)  badges.push("5 Chats Completed");
-    if (chats >= 10) badges.push("10 Chats Completed");
-    if (chats >= 20) badges.push("20 Chats Completed");
-    if (regions["EMEA"]) badges.push("EMEA Explorer");
-    if (regions["APAC"]) badges.push("APAC Explorer");
-    if (regions["NA"])   badges.push("NA Explorer");
-    if (regions["MEE"])  badges.push("MEE Explorer");
-    if (regionCount >= 3) badges.push("3 Regions Collected");
-    if (regionCount >= 4) badges.push("Global Explorer");
-    if (officeCount >= 5)  badges.push("5 Offices Collected");
-    if (officeCount >= 10) badges.push("Office Hopper");
-    if (officeCount >= 14) badges.push("Stamp Collector");
-    if (totalStamps >= 10) badges.push("Passport Pro");
-    return badges;
+    regions[other.region] = (regions[other.region] || 0) + 1;
+    offices[other.office] = (offices[other.office] || 0) + 1;
+    const chatsCompleted = (user.chatsCompleted || 0) + 1;
+    const badges = recalcBadges({ ...user, collectedRegions: regions, collectedOffices: offices, chatsCompleted });
+    return { regions: JSON.stringify(regions), offices: JSON.stringify(offices), chats: chatsCompleted, badges: JSON.stringify(badges) };
   }
 
-  // Award stamps to both users when a match is completed
-  async function awardStampsToUsers(emailA, emailB) {
-    const [userA, userB] = await Promise.all([
-      SELECT.one.from(Users).where({ email: emailA }),
-      SELECT.one.from(Users).where({ email: emailB }),
-    ]);
-    if (!userA || !userB) return;
+  const sA = applyStamp(userA, userB);
+  const sB = applyStamp(userB, userA);
 
-    function applyStamp(user, other) {
-      const regions = parseJSON(user.collectedRegions, {});
-      const offices = parseJSON(user.collectedOffices, {});
-      regions[other.region] = (regions[other.region] || 0) + 1;
-      offices[other.office] = (offices[other.office] || 0) + 1;
-      const chatsCompleted = (user.chatsCompleted || 0) + 1;
-      const badges = recalcBadges({
-        ...user,
-        collectedRegions: regions,
-        collectedOffices: offices,
-        chatsCompleted,
-      });
-      return {
-        collectedRegions: JSON.stringify(regions),
-        collectedOffices: JSON.stringify(offices),
-        chatsCompleted,
-        badges: JSON.stringify(badges),
-      };
+  await Promise.all([
+    exec(`UPDATE "${schema}"."USERS" SET "COLLECTEDREGIONS"=?,"COLLECTEDOFFICES"=?,"CHATSCOMPLETED"=?,"BADGES"=? WHERE "EMAIL"=?`,
+      [sA.regions, sA.offices, sA.chats, sA.badges, emailA]),
+    exec(`UPDATE "${schema}"."USERS" SET "COLLECTEDREGIONS"=?,"COLLECTEDOFFICES"=?,"CHATSCOMPLETED"=?,"BADGES"=? WHERE "EMAIL"=?`,
+      [sB.regions, sB.offices, sB.chats, sB.badges, emailB]),
+  ]);
+}
+
+// ── CAP service ────────────────────────────────────────────────────────────
+
+module.exports = cds.service.impl(async function (srv) {
+  const schema = getCredentials().schema || "ConnectionsPassport";
+
+  // Ensure tables exist on startup
+  cds.on("served", async () => {
+    try {
+      await ensureTables(getCredentials());
+      console.log("HANA tables ready.");
+    } catch (e) {
+      console.error("Failed to ensure HANA tables:", e.message);
     }
-
-    await Promise.all([
-      UPDATE(Users).set(applyStamp(userA, userB)).where({ email: emailA }),
-      UPDATE(Users).set(applyStamp(userB, userA)).where({ email: emailB }),
-    ]);
-  }
-
-  // ── getMyState ─────────────────────────────────────────────────────────────
-
-  srv.on("getMyState", async (req) => {
-    const email = callerEmail(req);
-
-    const [user, matches, peers] = await Promise.all([
-      SELECT.one.from(Users).where({ email }),
-      SELECT.from(Matches).where(
-        `userAEmail = '${email}' or userBEmail = '${email}'`
-      ),
-      SELECT.from(Users).where({ optedIn: true, paused: false, deleted: false })
-        .and(`email != '${email}'`),
-    ]);
-
-    // Return as a JSON string (action returns String in CDS)
-    return JSON.stringify({ user: user || null, matches, peers });
   });
 
-  // ── upsertUser ─────────────────────────────────────────────────────────────
+  // ── getMyState ───────────────────────────────────────────────────────────
+  srv.on("getMyState", async (req) => {
+    const email = callerEmail(req);
+    const [userRows, matchRows, peerRows] = await Promise.all([
+      exec(`SELECT * FROM "${schema}"."USERS" WHERE "EMAIL"=?`, [email]),
+      exec(`SELECT * FROM "${schema}"."MATCHES" WHERE "USERAMAIL"=? OR "USERBMAIL"=?`, [email, email]),
+      exec(`SELECT * FROM "${schema}"."USERS" WHERE "OPTEDIN"=TRUE AND "PAUSED"=FALSE AND "DELETED"=FALSE AND "EMAIL"!=?`, [email]),
+    ]);
+    return JSON.stringify({
+      user:    userRows.length ? rowToUser(userRows[0]) : null,
+      matches: matchRows.map(rowToMatch),
+      peers:   peerRows.map(rowToUser),
+    });
+  });
 
+  // ── upsertUser ───────────────────────────────────────────────────────────
   srv.on("upsertUser", async (req) => {
     const email = callerEmail(req);
     const { profile } = req.data;
-    const existing = await SELECT.one.from(Users).where({ email });
+    const existing = await exec(`SELECT "EMAIL" FROM "${schema}"."USERS" WHERE "EMAIL"=?`, [email]);
 
-    if (existing) {
-      await UPDATE(Users)
-        .set({
-          name: profile.name,
-          role: profile.role,
-          office: profile.office,
-          country: profile.country,
-          region: profile.region,
-          interests: profile.interests,
-          consentGiven: profile.consentGiven !== false,
-        })
-        .where({ email });
+    if (existing.length > 0) {
+      await exec(
+        `UPDATE "${schema}"."USERS" SET "NAME"=?,"ROLE"=?,"OFFICE"=?,"COUNTRY"=?,"REGION"=?,"INTERESTS"=?,"CONSENTGIVEN"=? WHERE "EMAIL"=?`,
+        [profile.name, profile.role, profile.office, profile.country, profile.region, profile.interests, profile.consentGiven !== false, email]
+      );
     } else {
-      await INSERT.into(Users).entries({
-        email,
-        name: profile.name,
-        role: profile.role,
-        office: profile.office,
-        country: profile.country,
-        region: profile.region,
-        interests: profile.interests,
-        consentGiven: profile.consentGiven !== false,
-        optedIn: true,
-        paused: false,
-        deleted: false,
-        collectedRegions: "{}",
-        collectedOffices: "{}",
-        chatsCompleted: 0,
-        badges: "[]",
-        lastReshuffleDate: null,
-        reshufflesUsedToday: 0,
-        lastMatchAcceptDate: null,
-        matchesAcceptedToday: 0,
-        joinedAt: new Date().toISOString(),
-      });
+      await exec(
+        `INSERT INTO "${schema}"."USERS" ("EMAIL","NAME","ROLE","OFFICE","COUNTRY","REGION","INTERESTS","CONSENTGIVEN","OPTEDIN","PAUSED","DELETED","COLLECTEDREGIONS","COLLECTEDOFFICES","CHATSCOMPLETED","BADGES","RESHUFFLESUSEDTODAY","MATCHESACCEPTEDTODAY","JOINEDAT")
+         VALUES (?,?,?,?,?,?,?,TRUE,TRUE,FALSE,FALSE,'{}','[]',0,'[]',0,0,CURRENT_TIMESTAMP)`,
+        [email, profile.name, profile.role, profile.office, profile.country, profile.region, profile.interests]
+      );
     }
-
-    return SELECT.one.from(Users).where({ email });
+    const rows = await exec(`SELECT * FROM "${schema}"."USERS" WHERE "EMAIL"=?`, [email]);
+    return rowToUser(rows[0]);
   });
 
-  // ── acceptMatch ────────────────────────────────────────────────────────────
-
+  // ── acceptMatch ──────────────────────────────────────────────────────────
   srv.on("acceptMatch", async (req) => {
     const email = callerEmail(req);
     const { otherEmail } = req.data;
+    const rows = await exec(`SELECT * FROM "${schema}"."USERS" WHERE "EMAIL"=?`, [email]);
+    if (!rows.length) req.reject(404, "User not found — please sign up first");
+    const me = rowToUser(rows[0]);
 
-    const me = await SELECT.one.from(Users).where({ email });
-    if (!me) req.reject(404, "User not found — please sign up first");
-
-    const isToday = me.lastMatchAcceptDate === todayStr();
+    const isToday  = me.lastMatchAcceptDate === todayStr();
     const usedToday = isToday ? (me.matchesAcceptedToday || 0) : 0;
-    if (usedToday >= MAX_MATCHES_PER_DAY) {
-      req.reject(429, "You've reached your 3-match daily limit. Come back tomorrow!");
-    }
+    if (usedToday >= MAX_MATCHES_PER_DAY) req.reject(429, "You've reached your 3-match daily limit. Come back tomorrow!");
 
-    const now = new Date();
+    const id      = cds.utils.uuid();
+    const now     = new Date();
     const expires = new Date(now.getTime() + MATCH_TTL_MS);
-    const match = {
-      id: cds.utils.uuid(),
-      userAEmail: email,
-      userBEmail: otherEmail,
-      status: "active",
-      confirmedA: false,
-      confirmedB: false,
-      acknowledgedByB: false,
-      removed: false,
-      createdAt: now.toISOString(),
-      expiresAt: expires.toISOString(),
-    };
 
     await Promise.all([
-      INSERT.into(Matches).entries(match),
-      UPDATE(Users)
-        .set({
-          lastMatchAcceptDate: todayStr(),
-          matchesAcceptedToday: usedToday + 1,
-        })
-        .where({ email }),
+      exec(
+        `INSERT INTO "${schema}"."MATCHES" ("ID","USERAMAIL","USERBMAIL","STATUS","CONFIRMEDA","CONFIRMEDB","ACKNOWLEDGEDBYB","REMOVED","CREATEDAT","EXPIRESAT")
+         VALUES (?,?,?,'active',FALSE,FALSE,FALSE,FALSE,?,?)`,
+        [id, email, otherEmail, now, expires]
+      ),
+      exec(
+        `UPDATE "${schema}"."USERS" SET "LASTMATCHACCEPTDATE"=?,"MATCHESACCEPTEDTODAY"=? WHERE "EMAIL"=?`,
+        [todayStr(), usedToday + 1, email]
+      ),
     ]);
 
-    return match;
+    const mRows = await exec(`SELECT * FROM "${schema}"."MATCHES" WHERE "ID"=?`, [id]);
+    return rowToMatch(mRows[0]);
   });
 
-  // ── confirmMatch ───────────────────────────────────────────────────────────
-
+  // ── confirmMatch ─────────────────────────────────────────────────────────
   srv.on("confirmMatch", async (req) => {
     const email = callerEmail(req);
     const { matchId } = req.data;
+    const rows = await exec(`SELECT * FROM "${schema}"."MATCHES" WHERE "ID"=?`, [matchId]);
+    if (!rows.length) req.reject(404, "Match not found");
+    const match = rowToMatch(rows[0]);
 
-    const match = await SELECT.one.from(Matches).where({ id: matchId });
-    if (!match) req.reject(404, "Match not found");
-
-    const isUserA = match.userAEmail === email;
+    const isUserA    = match.userAEmail === email;
     const confirmedA = isUserA ? true : match.confirmedA;
     const confirmedB = isUserA ? match.confirmedB : true;
-    const bothConfirmed = confirmedA && confirmedB;
+    const both       = confirmedA && confirmedB;
+    const status     = both ? "completed" : "pending_confirmation";
 
-    const updates = {
-      confirmedA,
-      confirmedB,
-      status: bothConfirmed ? "completed" : "pending_confirmation",
-    };
+    await exec(
+      `UPDATE "${schema}"."MATCHES" SET "CONFIRMEDA"=?,"CONFIRMEDB"=?,"STATUS"=? WHERE "ID"=?`,
+      [confirmedA, confirmedB, status, matchId]
+    );
+    if (both) await awardStampsToUsers(match.userAEmail, match.userBEmail);
 
-    await UPDATE(Matches).set(updates).where({ id: matchId });
-
-    if (bothConfirmed) {
-      await awardStampsToUsers(match.userAEmail, match.userBEmail);
-    }
-
-    return SELECT.one.from(Matches).where({ id: matchId });
+    const updated = await exec(`SELECT * FROM "${schema}"."MATCHES" WHERE "ID"=?`, [matchId]);
+    return rowToMatch(updated[0]);
   });
 
-  // ── acknowledgeMatch ───────────────────────────────────────────────────────
-
+  // ── acknowledgeMatch ─────────────────────────────────────────────────────
   srv.on("acknowledgeMatch", async (req) => {
     const { matchId } = req.data;
-    await UPDATE(Matches).set({ acknowledgedByB: true }).where({ id: matchId });
-    return SELECT.one.from(Matches).where({ id: matchId });
+    await exec(`UPDATE "${schema}"."MATCHES" SET "ACKNOWLEDGEDBYB"=TRUE WHERE "ID"=?`, [matchId]);
+    const rows = await exec(`SELECT * FROM "${schema}"."MATCHES" WHERE "ID"=?`, [matchId]);
+    return rowToMatch(rows[0]);
   });
 
-  // ── removeMatch ────────────────────────────────────────────────────────────
-
+  // ── removeMatch ──────────────────────────────────────────────────────────
   srv.on("removeMatch", async (req) => {
     const { matchId } = req.data;
-    await UPDATE(Matches).set({ removed: true, status: "expired" }).where({ id: matchId });
+    await exec(`UPDATE "${schema}"."MATCHES" SET "REMOVED"=TRUE,"STATUS"='expired' WHERE "ID"=?`, [matchId]);
     return true;
   });
 
-  // ── recordReshuffle ────────────────────────────────────────────────────────
-
+  // ── recordReshuffle ──────────────────────────────────────────────────────
   srv.on("recordReshuffle", async (req) => {
     const email = callerEmail(req);
-    const me = await SELECT.one.from(Users).where({ email });
-    if (!me) return true;
-
+    const rows  = await exec(`SELECT * FROM "${schema}"."USERS" WHERE "EMAIL"=?`, [email]);
+    if (!rows.length) return true;
+    const me     = rowToUser(rows[0]);
     const isToday = me.lastReshuffleDate === todayStr();
-    await UPDATE(Users)
-      .set({
-        lastReshuffleDate: todayStr(),
-        reshufflesUsedToday: isToday ? (me.reshufflesUsedToday || 0) + 1 : 1,
-      })
-      .where({ email });
-
+    await exec(
+      `UPDATE "${schema}"."USERS" SET "LASTRESHUFFLEDATE"=?,"RESHUFFLESUSEDTODAY"=? WHERE "EMAIL"=?`,
+      [todayStr(), isToday ? (me.reshufflesUsedToday || 0) + 1 : 1, email]
+    );
     return true;
   });
 
-  // ── pauseUser ──────────────────────────────────────────────────────────────
-
+  // ── pauseUser ────────────────────────────────────────────────────────────
   srv.on("pauseUser", async (req) => {
     const email = callerEmail(req);
-    const me = await SELECT.one.from(Users).where({ email });
-    if (!me) req.reject(404, "User not found");
-
-    await UPDATE(Users).set({ paused: !me.paused }).where({ email });
+    const rows  = await exec(`SELECT "PAUSED" FROM "${schema}"."USERS" WHERE "EMAIL"=?`, [email]);
+    if (!rows.length) req.reject(404, "User not found");
+    await exec(`UPDATE "${schema}"."USERS" SET "PAUSED"=? WHERE "EMAIL"=?`, [!rows[0].PAUSED, email]);
     return true;
   });
 
-  // ── deleteUser ─────────────────────────────────────────────────────────────
-
+  // ── deleteUser ───────────────────────────────────────────────────────────
   srv.on("deleteUser", async (req) => {
     const email = callerEmail(req);
-
-    // Anonymize user account
-    await UPDATE(Users)
-      .set({ deleted: true, name: "SAP Next Gen Member", optedIn: false })
-      .where({ email });
-
-    // Expire all active/pending matches
-    const activeMatches = await SELECT.from(Matches).where(
-      `(userAEmail = '${email}' or userBEmail = '${email}')
-       and status in ('active','pending_confirmation')`
+    await exec(
+      `UPDATE "${schema}"."USERS" SET "DELETED"=TRUE,"NAME"='SAP Next Gen Member',"OPTEDIN"=FALSE WHERE "EMAIL"=?`,
+      [email]
     );
-    for (const m of activeMatches) {
-      await UPDATE(Matches).set({ status: "expired" }).where({ id: m.id });
-    }
-
+    await exec(
+      `UPDATE "${schema}"."MATCHES" SET "STATUS"='expired' WHERE ("USERAMAIL"=? OR "USERBMAIL"=?) AND "STATUS" IN ('active','pending_confirmation')`,
+      [email, email]
+    );
     return true;
   });
 });
