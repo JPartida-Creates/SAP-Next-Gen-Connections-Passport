@@ -1,0 +1,18 @@
+{
+  "name": "connections-passport-srv",
+  "version": "1.0.0",
+  "description": "CAP backend for SAP Next Gen Connections Passport",
+  "scripts": {
+    "start": "cds-serve",
+    "watch": "cds watch"
+  },
+  "dependencies": {
+    "@sap/cds": "^10",
+    "@sap/xssec": "^3",
+    "passport": "^0.7",
+    "hdb": "^0.19"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

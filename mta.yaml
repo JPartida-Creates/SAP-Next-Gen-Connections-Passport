@@ -5,7 +5,7 @@ version: 1.0.0
 
 modules:
 
-  # ── App Router (also serves static React files) ───────────────
+  # ── App Router (serves static React files + proxies /api/* to CAP) ─────────
   - name: connections-passport-approuter
     type: approuter.nodejs
     path: approuter
@@ -20,12 +20,18 @@ modules:
           target-path: resources
     requires:
       - name: connections-passport-xsuaa
+      - name: srv-api
+        group: destinations
+        properties:
+          name: srv-api
+          url: ~{srv-url}
+          forwardAuthToken: true
     provides:
       - name: app-api
         properties:
           app-url: "${default-url}"
 
-  # ── React Frontend (built and copied for approuter) ───────────
+  # ── React Frontend (Vite build → copied into approuter/resources) ──────────
   - name: connections-passport-ui
     type: html5
     path: .
@@ -35,9 +41,26 @@ modules:
         - npm run build
       supported-platforms: []
 
+  # ── CAP Node.js Service (HANA persistence) ─────────────────────────────────
+  - name: connections-passport-srv
+    type: nodejs
+    path: cap
+    parameters:
+      disk-quota: 512M
+      memory: 256M
+    build-parameters:
+      builder: npm
+    requires:
+      - name: connections-passport-xsuaa
+      - name: connections-passport-hdi
+    provides:
+      - name: srv-api
+        properties:
+          srv-url: "${default-url}"
+
 resources:
 
-  # ── XSUAA (SSO) ───────────────────────────────────────────────
+  # ── XSUAA (SSO) ────────────────────────────────────────────────────────────
   - name: connections-passport-xsuaa
     type: org.cloudfoundry.managed-service
     parameters:
@@ -45,3 +68,13 @@ resources:
       service-plan: application
       path: ./xs-security.json
       service-name: connections-passport-xsuaa
+
+  # ── HANA HDI Container (tables auto-created from CDS schema on first boot) ─
+  - name: connections-passport-hdi
+    type: com.sap.xs.hdi-container
+    parameters:
+      service: hana
+      service-plan: hdi-shared
+      service-name: connections-passport-hdi
+    properties:
+      hdi-service-name: "${service-name}"

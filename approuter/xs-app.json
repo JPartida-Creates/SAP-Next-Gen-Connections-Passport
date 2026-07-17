@@ -9,6 +9,13 @@
       "authenticationType": "xsuaa"
     },
     {
+      "source": "^/api(.*)",
+      "target": "$1",
+      "destination": "srv-api",
+      "authenticationType": "xsuaa",
+      "csrfProtection": false
+    },
+    {
       "source": "^(/.*)",
       "localDir": "resources",
       "authenticationType": "xsuaa"

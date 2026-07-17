@@ -6,14 +6,94 @@ import {
 } from "lucide-react";
 
 /* ============================================================
-   SAP Next Gen Connections Passport — Clickable Prototype
+   SAP Next Gen Connections Passport — Prototype with CAP Backend
    ------------------------------------------------------------
-   Single-file React prototype. All data is in-memory and seeded
-   with fake users. No real SAP SSO / People Profile / backend
-   calls are made. Integration points are marked with:
-     // [SSO-INTEGRATION-POINT], [PROFILE-INTEGRATION-POINT],
-     // [BACKEND-INTEGRATION-POINT]
+   Single-file React app. When running on BTP the CAP backend
+   persists all user/match data to HANA Cloud. On localhost the
+   app falls back to in-memory demo mode automatically.
+   Integration points are marked with:
+     // [SSO-INTEGRATION-POINT], [BACKEND-INTEGRATION-POINT]
    ============================================================ */
+
+/* ── API Client ────────────────────────────────────────────────
+   All fetch calls route through the AppRouter which forwards
+   the XSUAA bearer token. On localhost (no AppRouter) these
+   calls will fail and the app stays in demo mode silently.
+   ─────────────────────────────────────────────────────────── */
+
+const API = {
+  async _call(action, params = {}) {
+    const res = await fetch(`/api/PassportService/${action}`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(params),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => res.status);
+      throw new Error(`${action} failed: ${text}`);
+    }
+    return res.json();
+  },
+  async getMyState() {
+    const res = await fetch("/api/PassportService/getMyState", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    // CAP wraps action return values in { value: "..." }
+    const raw = data?.value ?? data;
+    return typeof raw === "string" ? JSON.parse(raw) : raw;
+  },
+  upsertUser:      (profile)    => API._call("upsertUser",      { profile }),
+  acceptMatch:     (otherEmail) => API._call("acceptMatch",     { otherEmail }),
+  confirmMatch:    (matchId)    => API._call("confirmMatch",    { matchId }),
+  acknowledgeMatch:(matchId)    => API._call("acknowledgeMatch",{ matchId }),
+  removeMatch:     (matchId)    => API._call("removeMatch",     { matchId }),
+  recordReshuffle: ()           => API._call("recordReshuffle"),
+  pauseUser:       ()           => API._call("pauseUser"),
+  deleteUser:      ()           => API._call("deleteUser"),
+};
+
+/* Normalize a user row from the CAP API into the shape the UI expects.
+   HANA stores JSON fields as strings — parse them back to objects.
+   Also maps `email` → `id` so existing components work without changes. */
+function normalizeUser(u) {
+  if (!u) return null;
+  function parseJ(val, fallback) {
+    if (!val) return fallback;
+    if (typeof val !== "string") return val;
+    try { return JSON.parse(val); } catch { return fallback; }
+  }
+  return {
+    ...u,
+    id: u.email,                                          // UI uses .id for keys
+    collectedRegions: parseJ(u.collectedRegions, {}),
+    collectedOffices: parseJ(u.collectedOffices, {}),
+    badges: parseJ(u.badges, []),
+    interests: typeof u.interests === "string"
+      ? u.interests.split(",").map(s => s.trim()).filter(Boolean)
+      : (u.interests || []),
+    timezone: getTimezone(u.office, u.country),
+  };
+}
+
+/* Normalize a match from the CAP API: add userAId/userBId aliases so the
+   MatchRow/MatchPanel components don't need to know about the email fields. */
+function normalizeMatch(m) {
+  if (!m) return null;
+  return {
+    ...m,
+    userAId: m.userAEmail,
+    userBId: m.userBEmail,
+    // CAP timestamps are ISO strings; convert to ms for daysLeft math
+    createdAt: m.createdAt ? new Date(m.createdAt).getTime() : Date.now(),
+    expiresAt: m.expiresAt ? new Date(m.expiresAt).getTime() : Date.now() + 7 * 86400000,
+  };
+}
 
 /* ---------------------- Design tokens ----------------------
    Ink      #002060  primary dark / nav / headers
@@ -2869,27 +2949,58 @@ function NotificationBanner({ notifications, onDismiss }) {
 export default function CoffeePassportApp() {
   useFonts();
 
-  const [{ users, matches }, setState] = useState(() => {
+  // ── Demo seed state (read-only — never sent to backend) ─────────────────────
+  const [demoState] = useState(() => {
     const u = seedUsers();
     const m = seedMatches(u);
     return { users: u, matches: m };
   });
 
+  // ── Live backend state ───────────────────────────────────────────────────────
+  const [liveUser, setLiveUser] = useState(null);      // real signed-in user (HANA)
+  const [liveMatches, setLiveMatches] = useState([]);  // their matches (HANA)
+  const [livePeers, setLivePeers] = useState([]);      // other opted-in real users (HANA)
+  const [backendAvailable, setBackendAvailable] = useState(false);
+
+  // ── UI state ─────────────────────────────────────────────────────────────────
   const [currentUserId, setCurrentUserId] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
   const [view, setView] = useState("landing");
   const [signedUpIds, setSignedUpIds] = useState(new Set());
-  const hasSignedUp = signedUpIds.has(currentUserId);
   const [notifications, setNotifications] = useState([]);
   const [celebrating, setCelebrating] = useState(false);
-
-  // [SSO-INTEGRATION-POINT] ssoUser is populated from the BTP App Router's user API.
-  // On BTP, the App Router injects the XSUAA JWT automatically — no extra token handling needed.
   const [ssoUser, setSsoUser] = useState(null);
 
-  // On mount, fetch real user info from the App Router's built-in /user-api/currentUser endpoint.
-  // This is provided by @sap/approuter with no custom backend needed.
-  // On localhost this will 404 and fall through silently (mock login used instead).
+  // ── Demo state (in-memory fallback, used when backend unavailable) ───────────
+  const [demoUsers, setDemoUsers] = useState(demoState.users);
+  const [demoMatches, setDemoMatches] = useState(demoState.matches);
+
+  // ── Derived: which set of data to show ───────────────────────────────────────
+  // When live: currentUser = liveUser; users/matches = live data + demo peers for matcher
+  // When demo: currentUser = demoUsers[currentUserId]; users/matches = demo data
+  const currentUser = backendAvailable
+    ? liveUser
+    : (demoUsers.find(u => u.id === currentUserId) || null);
+
+  const hasSignedUp = backendAvailable
+    ? liveUser !== null
+    : signedUpIds.has(currentUserId);
+
+  // All users visible to the matcher — live peers when backend is up, demo seed otherwise
+  const matcherUsers = backendAvailable
+    ? [liveUser, ...livePeers].filter(Boolean)
+    : demoUsers;
+
+  // Normalize live matches to include userAId/userBId aliases so UI components work unchanged
+  const normalizedLiveMatches = useMemo(
+    () => liveMatches.map(normalizeMatch),
+    [liveMatches]
+  );
+
+  const activeMatches = backendAvailable ? normalizedLiveMatches : demoMatches;
+
+  // ── SSO: fetch real user identity on mount ───────────────────────────────────
+  // [SSO-INTEGRATION-POINT] On BTP the App Router injects the XSUAA JWT automatically.
   React.useEffect(() => {
     fetch("/user-api/currentUser", { credentials: "include" })
       .then(r => r.ok ? r.json() : null)
@@ -2909,38 +3020,45 @@ export default function CoffeePassportApp() {
       .catch(() => {}); // silently fail on localhost
   }, []);
 
-  // [SSO-INTEGRATION-POINT] On localhost: mock login for development.
-  // On BTP: the landing page "Sign in with SAP" button triggers the App Router OAuth2 flow
-  //   via window.location.href = "/login" — user is redirected back already authenticated,
-  //   and the useEffect above will have populated ssoUser from /uaa/userinfo.
+  // ── Backend: load user state once SSO email is known ────────────────────────
+  // [BACKEND-INTEGRATION-POINT] Calls CAP /api/PassportService/getMyState()
+  React.useEffect(() => {
+    if (!ssoUser?.email) return;
+    API.getMyState()
+      .then(state => {
+        if (!state) return; // backend not reachable — stay in demo mode
+        setBackendAvailable(true);
+        if (state.user) {
+          const u = normalizeUser(state.user);
+          setLiveUser(u);
+          setCurrentUserId(u.email);
+          setSignedUpIds(prev => new Set([...prev, u.email]));
+        }
+        setLiveMatches(state.matches || []);
+        setLivePeers((state.peers || []).map(normalizeUser));
+      })
+      .catch(() => setBackendAvailable(false));
+  }, [ssoUser?.email]);
+
+  // ── SSO login handler ────────────────────────────────────────────────────────
   function handleSSOLogin() {
-    // If already populated from BTP token, just proceed to signup
-    if (ssoUser) {
-      setView("signup");
-      return;
-    }
-    // Localhost dev fallback — redirects to the App Router login page on BTP
-    // Uncomment the line below when deployed: window.location.href = "/login";
-    setSsoUser({
-      name: "Your Name",         // Replace with real name from XSUAA token
-      email: "user@sap.com",
-      country: "",
-      office: "",
-    });
+    if (ssoUser) { setView("signup"); return; }
+    // Localhost dev fallback
+    setSsoUser({ name: "Demo User", email: "demo@sap.com", country: "", office: "" });
     setView("signup");
   }
 
-  const currentUser = users.find(u => u.id === currentUserId) || null;
+  // ── Incoming match detection ─────────────────────────────────────────────────
+  const incomingMatch = useMemo(() => {
+    if (!currentUser) return null;
+    return activeMatches.find(m => m.userBId === currentUser.id && m.acknowledgedByB === false);
+  }, [activeMatches, currentUser?.id]);
 
-  // Find the first unacknowledged incoming match for the current user (they are userB)
-  const incomingMatch = useMemo(() =>
-    currentUser ? matches.find(m => m.userBId === currentUser.id && m.acknowledgedByB === false) : null,
-    [matches, currentUser?.id]
-  );
   const incomingMatchUser = incomingMatch
-    ? users.find(u => u.id === incomingMatch.userAId)
+    ? matcherUsers.find(u => u.id === incomingMatch.userAId)
     : null;
 
+  // ── Notifications ────────────────────────────────────────────────────────────
   function pushNotif(title, body) {
     const id = Date.now();
     setNotifications(n => [...n, { id, title, body }]);
@@ -2948,120 +3066,164 @@ export default function CoffeePassportApp() {
   }
   function dismissNotif(id) { setNotifications(n => n.filter(x => x.id !== id)); }
 
+  // ── Rate limits (derived from current user state) ────────────────────────────
   const reshufflesLeft = useMemo(() => {
     if (!currentUser) return MAX_RESHUFFLES_PER_DAY;
     if (currentUser.lastReshuffleDate !== todayStr()) return MAX_RESHUFFLES_PER_DAY;
-    return Math.max(0, MAX_RESHUFFLES_PER_DAY - currentUser.reshufflesUsedToday);
+    return Math.max(0, MAX_RESHUFFLES_PER_DAY - (currentUser.reshufflesUsedToday || 0));
   }, [currentUser]);
 
   const matchesLeft = useMemo(() => {
     if (!currentUser) return MAX_MATCHES_PER_DAY;
     if (currentUser.lastMatchAcceptDate !== todayStr()) return MAX_MATCHES_PER_DAY;
-    return Math.max(0, MAX_MATCHES_PER_DAY - currentUser.matchesAcceptedToday);
+    return Math.max(0, MAX_MATCHES_PER_DAY - (currentUser.matchesAcceptedToday || 0));
   }, [currentUser]);
 
-  function handleReshuffle() {
-    setState(s => ({
-      ...s,
-      users: s.users.map(u => {
+  // ── Action handlers — API when backend available, in-memory otherwise ─────────
+
+  async function handleReshuffle() {
+    if (backendAvailable) {
+      await API.recordReshuffle().catch(() => {});
+      setLiveUser(u => u ? {
+        ...u,
+        lastReshuffleDate: todayStr(),
+        reshufflesUsedToday: u.lastReshuffleDate === todayStr()
+          ? (u.reshufflesUsedToday || 0) + 1 : 1,
+      } : u);
+    } else {
+      setDemoUsers(users => users.map(u => {
         if (u.id !== currentUser.id) return u;
         const isToday = u.lastReshuffleDate === todayStr();
         return { ...u, lastReshuffleDate: todayStr(), reshufflesUsedToday: isToday ? u.reshufflesUsedToday + 1 : 1 };
-      }),
-    }));
+      }));
+    }
   }
 
-  function handleAccept(otherUser) {
-    setState(s => {
-      const me = s.users.find(u => u.id === currentUser.id);
-      const isToday = me.lastMatchAcceptDate === todayStr();
-      const acceptedToday = isToday ? me.matchesAcceptedToday : 0;
-      if (acceptedToday >= MAX_MATCHES_PER_DAY) return s;
-      const now = Date.now();
-      const newMatch = {
-        id: Math.max(0, ...s.matches.map(m => m.id)) + 1,
-        userAId: currentUser.id, userBId: otherUser.id,
-        createdAt: now, expiresAt: now + 7 * 86400000,
-        status: "active", confirmedA: false, confirmedB: false,
-        acknowledgedByB: false, // userB must acknowledge before match shows as active to them
-      };
-      const users = s.users.map(u => u.id === currentUser.id
-        ? { ...u, lastMatchAcceptDate: todayStr(), matchesAcceptedToday: acceptedToday + 1 }
-        : u);
-      return { users, matches: [...s.matches, newMatch] };
-    });
-    pushNotif(
-      `☕ New coffee match!`,
-      `You've been matched with ${otherUser.name} from ${otherUser.office}. Say hello!`
-    );
+  async function handleAccept(otherUser) {
+    if (backendAvailable && liveUser) {
+      try {
+        const match = await API.acceptMatch(otherUser.email || otherUser.id);
+        setLiveMatches(m => [...m, match]);
+        setLiveUser(u => u ? {
+          ...u,
+          lastMatchAcceptDate: todayStr(),
+          matchesAcceptedToday: u.lastMatchAcceptDate === todayStr()
+            ? (u.matchesAcceptedToday || 0) + 1 : 1,
+        } : u);
+        pushNotif("☕ New coffee match!", `You've been matched with ${otherUser.name} from ${otherUser.office}. Say hello!`);
+      } catch (e) {
+        pushNotif("Could not create match", e.message);
+      }
+    } else {
+      setDemoUsers(users => {
+        const me = users.find(u => u.id === currentUser.id);
+        const isToday = me.lastMatchAcceptDate === todayStr();
+        const acceptedToday = isToday ? me.matchesAcceptedToday : 0;
+        if (acceptedToday >= MAX_MATCHES_PER_DAY) return users;
+        const now = Date.now();
+        const newMatch = {
+          id: Math.max(0, ...demoMatches.map(m => m.id)) + 1,
+          userAId: currentUser.id, userBId: otherUser.id,
+          createdAt: now, expiresAt: now + 7 * 86400000,
+          status: "active", confirmedA: false, confirmedB: false,
+          acknowledgedByB: false,
+        };
+        setDemoMatches(m => [...m, newMatch]);
+        pushNotif("☕ New coffee match!", `You've been matched with ${otherUser.name} from ${otherUser.office}. Say hello!`);
+        return users.map(u => u.id === currentUser.id
+          ? { ...u, lastMatchAcceptDate: todayStr(), matchesAcceptedToday: acceptedToday + 1 }
+          : u);
+      });
+    }
   }
 
-  function handleConfirm(matchId) {
-    setState(s => {
-      let completedPair = null;
-      const matches = s.matches.map(m => {
-        if (m.id !== matchId) return m;
-        const isUserA = m.userAId === currentUser.id;
-        const updated = { ...m, confirmedA: isUserA ? true : m.confirmedA, confirmedB: !isUserA ? true : m.confirmedB };
-        const both = updated.confirmedA && updated.confirmedB;
-        updated.status = both ? "completed" : "pending_confirmation";
-        if (both) completedPair = [updated.userAId, updated.userBId];
+  async function handleConfirm(matchId) {
+    if (backendAvailable) {
+      try {
+        const updated = await API.confirmMatch(matchId);
+        setLiveMatches(m => m.map(x => x.id === matchId ? updated : x));
+        if (updated.status === "completed") {
+          // Reload user to get fresh stamps/badges from HANA
+          API.getMyState().then(state => {
+            if (state?.user) setLiveUser(normalizeUser(state.user));
+          }).catch(() => {});
+          setTimeout(() => { setCelebrating(true); playStampSound(); }, 100);
+        }
+      } catch (e) {
+        pushNotif("Error", e.message);
+      }
+    } else {
+      setDemoMatches(matches => {
+        let completedPair = null;
+        const updated = matches.map(m => {
+          if (m.id !== matchId) return m;
+          const isUserA = m.userAId === currentUser.id;
+          const upd = { ...m, confirmedA: isUserA ? true : m.confirmedA, confirmedB: !isUserA ? true : m.confirmedB };
+          const both = upd.confirmedA && upd.confirmedB;
+          upd.status = both ? "completed" : "pending_confirmation";
+          if (both) completedPair = [upd.userAId, upd.userBId];
+          return upd;
+        });
+        if (completedPair) {
+          const [aId, bId] = completedPair;
+          setDemoUsers(users => users.map(u => {
+            if (u.id !== aId && u.id !== bId) return u;
+            const other = users.find(x => x.id === (u.id === aId ? bId : aId));
+            const clone = { ...u, collectedRegions: { ...u.collectedRegions }, collectedOffices: { ...u.collectedOffices } };
+            awardStamps(clone, other);
+            recalcBadges(clone);
+            return clone;
+          }));
+          setTimeout(() => { setCelebrating(true); playStampSound(); }, 100);
+        }
         return updated;
       });
-      let users = s.users;
-      if (completedPair) {
-        const [aId, bId] = completedPair;
-        users = s.users.map(u => {
-          if (u.id !== aId && u.id !== bId) return u;
-          const other = s.users.find(x => x.id === (u.id === aId ? bId : aId));
-          const clone = { ...u, collectedRegions: { ...u.collectedRegions }, collectedOffices: { ...u.collectedOffices } };
-          awardStamps(clone, other);
-          recalcBadges(clone);
-          return clone;
-        });
-        // Trigger stamp celebration for the current user
-        setTimeout(() => { setCelebrating(true); playStampSound(); }, 100);
-      }
-      return { users, matches };
-    });
+    }
   }
 
-  function handleAcknowledge(matchId) {
-    setState(s => ({
-      ...s,
-      matches: s.matches.map(m => m.id === matchId ? { ...m, acknowledgedByB: true } : m),
-    }));
+  async function handleAcknowledge(matchId) {
+    if (backendAvailable) {
+      await API.acknowledgeMatch(matchId).catch(() => {});
+      setLiveMatches(m => m.map(x => x.id === matchId ? { ...x, acknowledgedByB: true } : x));
+    } else {
+      setDemoMatches(m => m.map(x => x.id === matchId ? { ...x, acknowledgedByB: true } : x));
+    }
   }
 
-  function handleRemove(matchId) {
-    setState(s => ({
-      ...s,
-      matches: s.matches.map(m => m.id === matchId ? { ...m, removed: true } : m),
-    }));
+  async function handleRemove(matchId) {
+    if (backendAvailable) {
+      await API.removeMatch(matchId).catch(() => {});
+      setLiveMatches(m => m.map(x => x.id === matchId ? { ...x, removed: true, status: "expired" } : x));
+    } else {
+      setDemoMatches(m => m.map(x => x.id === matchId ? { ...x, removed: true } : x));
+    }
   }
 
-  function handlePause() {
-    setState(s => ({
-      ...s,
-      users: s.users.map(u => u.id === currentUserId ? { ...u, paused: !u.paused } : u),
-    }));
+  async function handlePause() {
+    if (backendAvailable) {
+      await API.pauseUser().catch(() => {});
+      setLiveUser(u => u ? { ...u, paused: !u.paused } : u);
+    } else {
+      setDemoUsers(users => users.map(u => u.id === currentUserId ? { ...u, paused: !u.paused } : u));
+    }
   }
 
-  function handleDelete() {
-    setState(s => ({
-      ...s,
-      // Mark user as deleted, anonymise their name in history
-      users: s.users.map(u => u.id === currentUserId
-        ? { ...u, deleted: true, name: "SAP Next Gen Member", optedIn: false }
-        : u),
-      // Cancel any active/pending matches
-      matches: s.matches.map(m =>
+  async function handleDelete() {
+    if (backendAvailable) {
+      await API.deleteUser().catch(() => {});
+      setLiveUser(u => u ? { ...u, deleted: true, name: "SAP Next Gen Member", optedIn: false } : u);
+      setLiveMatches(m => m.map(x =>
+        ["active", "pending_confirmation"].includes(x.status) ? { ...x, status: "expired" } : x
+      ));
+    } else {
+      setDemoUsers(users => users.map(u => u.id === currentUserId
+        ? { ...u, deleted: true, name: "SAP Next Gen Member", optedIn: false } : u));
+      setDemoMatches(matches => matches.map(m =>
         (m.userAId === currentUserId || m.userBId === currentUserId) &&
         ["active", "pending_confirmation"].includes(m.status)
-          ? { ...m, status: "expired" }
-          : m
-      ),
-    }));
+          ? { ...m, status: "expired" } : m
+      ));
+    }
     setView("dashboard");
   }
 
@@ -3105,7 +3267,7 @@ export default function CoffeePassportApp() {
           ))}
         </div>
         <div className="flex items-center gap-2">
-          {/* Show signed-in user name when logged in, otherwise nothing */}
+          {/* Show signed-in user name when logged in */}
           {ssoUser && (
             <span className="text-xs rounded-full px-3 py-1.5"
               style={{ backgroundColor: "#0A3D8F", color: "#D1EFFF" }}>
@@ -3135,32 +3297,45 @@ export default function CoffeePassportApp() {
         {/* Signup / Profile page */}
         {view === "signup" && !isAdmin && (
           <SignupPage
-            users={users}
+            users={matcherUsers}
             ssoUser={ssoUser}
             editMode={hasSignedUp}
             isPaused={currentUser?.paused}
             onPause={hasSignedUp ? handlePause : undefined}
             onDelete={hasSignedUp ? handleDelete : undefined}
-            initialData={hasSignedUp ? {
+            initialData={hasSignedUp && currentUser ? {
               name: currentUser.name, role: currentUser.role,
               office: currentUser.office, country: currentUser.country,
               region: currentUser.region, interests: currentUser.interests,
             } : null}
-            onComplete={form => {
-              if (hasSignedUp) {
-                // Update existing user
-                setState(s => ({
-                  ...s,
-                  users: s.users.map(u => u.id === currentUser.id ? {
+            onComplete={async form => {
+              if (backendAvailable) {
+                try {
+                  const saved = await API.upsertUser({
+                    name: form.name, role: form.role,
+                    office: form.office, country: form.country,
+                    region: form.region,
+                    interests: Array.isArray(form.interests)
+                      ? form.interests.join(",") : form.interests,
+                    consentGiven: true,
+                  });
+                  const u = normalizeUser(saved);
+                  setLiveUser(u);
+                  setCurrentUserId(u.email);
+                  setSignedUpIds(prev => new Set([...prev, u.email]));
+                } catch (e) {
+                  pushNotif("Error saving profile", e.message);
+                  return;
+                }
+              } else {
+                if (hasSignedUp) {
+                  setDemoUsers(users => users.map(u => u.id === currentUser.id ? {
                     ...u, name: form.name, role: form.role,
                     region: form.region, country: form.country, office: form.office,
                     timezone: getTimezone(form.office, form.country), interests: form.interests,
-                  } : u),
-                }));
-              } else {
-                // Create new user
-                setState(s => {
-                  const newId = Math.max(...s.users.map(u => u.id)) + 1;
+                  } : u));
+                } else {
+                  const newId = Math.max(...demoUsers.map(u => u.id)) + 1;
                   const newUser = {
                     id: newId, name: form.name, role: form.role,
                     region: form.region, country: form.country, office: form.office,
@@ -3171,11 +3346,10 @@ export default function CoffeePassportApp() {
                     lastReshuffleDate: null, reshufflesUsedToday: 0,
                     lastMatchAcceptDate: null, matchesAcceptedToday: 0,
                   };
-                  // Switch the active user to the newly created profile
                   setCurrentUserId(newId);
                   setSignedUpIds(prev => new Set([...prev, newId]));
-                  return { ...s, users: [...s.users, newUser] };
-                });
+                  setDemoUsers(u => [...u, newUser]);
+                }
               }
               setView("dashboard");
             }}
@@ -3194,20 +3368,20 @@ export default function CoffeePassportApp() {
             </div>
             <div className="border-r overflow-hidden bg-white" style={{ borderColor: "#CFE6FA" }}>
               <MatchPanel
-                users={users} matches={matches} currentUser={currentUser}
+                users={matcherUsers} matches={activeMatches} currentUser={currentUser}
                 onAccept={handleAccept} onReshuffle={handleReshuffle}
                 reshufflesLeft={reshufflesLeft} matchesLeft={matchesLeft}
               />
             </div>
             <div className="overflow-hidden" style={{ backgroundColor: "#F5FAFF" }}>
-              <MatchesPanel matches={matches} users={users} currentUser={currentUser} onConfirm={handleConfirm} onRemove={handleRemove} onAcknowledge={handleAcknowledge} />
+              <MatchesPanel matches={activeMatches} users={matcherUsers} currentUser={currentUser} onConfirm={handleConfirm} onRemove={handleRemove} onAcknowledge={handleAcknowledge} />
             </div>
           </div>
         )}
 
         {isAdmin && (
           <div className="flex-1 overflow-hidden bg-white">
-            <AdminPanel users={users} matches={matches} />
+            <AdminPanel users={matcherUsers} matches={activeMatches} />
           </div>
         )}
       </div>

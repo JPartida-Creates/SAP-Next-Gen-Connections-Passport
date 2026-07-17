@@ -9,3 +9,6 @@ approuter/resources/
 approuter/node_modules/
 dist.zip
 .connections-passport_mta_build_tmp/
+cap/node_modules/
+cap/.cdsrc-local.json
+cap/sqlite.db
