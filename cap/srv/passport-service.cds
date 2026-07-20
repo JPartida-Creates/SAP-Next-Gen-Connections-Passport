@@ -1,7 +1,6 @@
 using connections.passport as db from '../db/schema';
 
-@requires: 'User'
-service PassportService @(path:'/api') {
+service PassportService @(path:'/PassportService') {
 
   entity Users as projection on db.Users;
 

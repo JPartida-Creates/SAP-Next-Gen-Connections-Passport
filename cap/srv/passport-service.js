@@ -32,15 +32,25 @@ function exec(sql, params = []) {
   return new Promise(async (resolve, reject) => {
     const client = await getClient().catch(reject);
     if (!client) return;
-    client.exec(sql, params, (err, rows) => err ? reject(err) : resolve(rows));
+    // If no params, use simple exec; otherwise use prepared statement
+    if (params.length === 0) {
+      client.exec(sql, (err, rows) => err ? reject(err) : resolve(rows));
+    } else {
+      client.prepare(sql, (err, stmt) => {
+        if (err) return reject(err);
+        stmt.exec(params, (err2, rows) => err2 ? reject(err2) : resolve(rows));
+      });
+    }
   });
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function callerEmail(req) {
-  const email = req.user && req.user.id;
-  if (!email) req.reject(401, "Unauthenticated");
+  const u = req.user;
+  const email = u && (u.id || u.attr?.email || u.attr?.mail);
+  console.log("callerEmail:", email, "| id:", u?.id, "| attr:", JSON.stringify(u?.attr));
+  if (!email) { req.reject(401, "Unauthenticated"); return null; }
   return email;
 }
 
@@ -144,12 +154,10 @@ async function awardStampsToUsers(emailA, emailB) {
   const sA = applyStamp(userA, userB);
   const sB = applyStamp(userB, userA);
 
-  await Promise.all([
-    exec(`UPDATE "${schema}"."USERS" SET "COLLECTEDREGIONS"=?,"COLLECTEDOFFICES"=?,"CHATSCOMPLETED"=?,"BADGES"=? WHERE "EMAIL"=?`,
-      [sA.regions, sA.offices, sA.chats, sA.badges, emailA]),
-    exec(`UPDATE "${schema}"."USERS" SET "COLLECTEDREGIONS"=?,"COLLECTEDOFFICES"=?,"CHATSCOMPLETED"=?,"BADGES"=? WHERE "EMAIL"=?`,
-      [sB.regions, sB.offices, sB.chats, sB.badges, emailB]),
-  ]);
+  await exec(`UPDATE "${schema}"."USERS" SET "COLLECTEDREGIONS"=?,"COLLECTEDOFFICES"=?,"CHATSCOMPLETED"=?,"BADGES"=? WHERE "EMAIL"=?`,
+    [sA.regions, sA.offices, sA.chats, sA.badges, emailA]);
+  await exec(`UPDATE "${schema}"."USERS" SET "COLLECTEDREGIONS"=?,"COLLECTEDOFFICES"=?,"CHATSCOMPLETED"=?,"BADGES"=? WHERE "EMAIL"=?`,
+    [sB.regions, sB.offices, sB.chats, sB.badges, emailB]);
 }
 
 // ── CAP service ────────────────────────────────────────────────────────────
@@ -170,11 +178,13 @@ module.exports = cds.service.impl(async function (srv) {
   // ── getMyState ───────────────────────────────────────────────────────────
   srv.on("getMyState", async (req) => {
     const email = callerEmail(req);
-    const [userRows, matchRows, peerRows] = await Promise.all([
-      exec(`SELECT * FROM "${schema}"."USERS" WHERE "EMAIL"=?`, [email]),
-      exec(`SELECT * FROM "${schema}"."MATCHES" WHERE "USERAMAIL"=? OR "USERBMAIL"=?`, [email, email]),
-      exec(`SELECT * FROM "${schema}"."USERS" WHERE "OPTEDIN"=TRUE AND "PAUSED"=FALSE AND "DELETED"=FALSE AND "EMAIL"!=?`, [email]),
-    ]);
+    if (!email) return;
+    const userRows  = await exec(`SELECT * FROM "${schema}"."USERS" WHERE "EMAIL"=?`, [email]);
+    console.log("userRows ok, count:", userRows.length);
+    const matchRows = await exec(`SELECT * FROM "${schema}"."MATCHES" WHERE "USERAMAIL"=? OR "USERBMAIL"=?`, [email, email]);
+    console.log("matchRows ok, count:", matchRows.length);
+    const peerRows  = await exec(`SELECT * FROM "${schema}"."USERS" WHERE "OPTEDIN"=TRUE AND "PAUSED"=FALSE AND "DELETED"=FALSE AND "EMAIL"!=?`, [email]);
+    console.log("peerRows ok, count:", peerRows.length);
     return JSON.stringify({
       user:    userRows.length ? rowToUser(userRows[0]) : null,
       matches: matchRows.map(rowToMatch),
@@ -185,6 +195,7 @@ module.exports = cds.service.impl(async function (srv) {
   // ── upsertUser ───────────────────────────────────────────────────────────
   srv.on("upsertUser", async (req) => {
     const email = callerEmail(req);
+    if (!email) return;
     const { profile } = req.data;
     const existing = await exec(`SELECT "EMAIL" FROM "${schema}"."USERS" WHERE "EMAIL"=?`, [email]);
 
@@ -207,6 +218,7 @@ module.exports = cds.service.impl(async function (srv) {
   // ── acceptMatch ──────────────────────────────────────────────────────────
   srv.on("acceptMatch", async (req) => {
     const email = callerEmail(req);
+    if (!email) return;
     const { otherEmail } = req.data;
     const rows = await exec(`SELECT * FROM "${schema}"."USERS" WHERE "EMAIL"=?`, [email]);
     if (!rows.length) req.reject(404, "User not found — please sign up first");
@@ -220,17 +232,15 @@ module.exports = cds.service.impl(async function (srv) {
     const now     = new Date();
     const expires = new Date(now.getTime() + MATCH_TTL_MS);
 
-    await Promise.all([
-      exec(
-        `INSERT INTO "${schema}"."MATCHES" ("ID","USERAMAIL","USERBMAIL","STATUS","CONFIRMEDA","CONFIRMEDB","ACKNOWLEDGEDBYB","REMOVED","CREATEDAT","EXPIRESAT")
-         VALUES (?,?,?,'active',FALSE,FALSE,FALSE,FALSE,?,?)`,
-        [id, email, otherEmail, now, expires]
-      ),
-      exec(
-        `UPDATE "${schema}"."USERS" SET "LASTMATCHACCEPTDATE"=?,"MATCHESACCEPTEDTODAY"=? WHERE "EMAIL"=?`,
-        [todayStr(), usedToday + 1, email]
-      ),
-    ]);
+    await exec(
+      `INSERT INTO "${schema}"."MATCHES" ("ID","USERAMAIL","USERBMAIL","STATUS","CONFIRMEDA","CONFIRMEDB","ACKNOWLEDGEDBYB","REMOVED","CREATEDAT","EXPIRESAT")
+       VALUES (?,?,?,'active',FALSE,FALSE,FALSE,FALSE,?,?)`,
+      [id, email, otherEmail, now, expires]
+    );
+    await exec(
+      `UPDATE "${schema}"."USERS" SET "LASTMATCHACCEPTDATE"=?,"MATCHESACCEPTEDTODAY"=? WHERE "EMAIL"=?`,
+      [todayStr(), usedToday + 1, email]
+    );
 
     const mRows = await exec(`SELECT * FROM "${schema}"."MATCHES" WHERE "ID"=?`, [id]);
     return rowToMatch(mRows[0]);
@@ -239,6 +249,7 @@ module.exports = cds.service.impl(async function (srv) {
   // ── confirmMatch ─────────────────────────────────────────────────────────
   srv.on("confirmMatch", async (req) => {
     const email = callerEmail(req);
+    if (!email) return;
     const { matchId } = req.data;
     const rows = await exec(`SELECT * FROM "${schema}"."MATCHES" WHERE "ID"=?`, [matchId]);
     if (!rows.length) req.reject(404, "Match not found");
@@ -278,6 +289,7 @@ module.exports = cds.service.impl(async function (srv) {
   // ── recordReshuffle ──────────────────────────────────────────────────────
   srv.on("recordReshuffle", async (req) => {
     const email = callerEmail(req);
+    if (!email) return true;
     const rows  = await exec(`SELECT * FROM "${schema}"."USERS" WHERE "EMAIL"=?`, [email]);
     if (!rows.length) return true;
     const me     = rowToUser(rows[0]);
@@ -292,6 +304,7 @@ module.exports = cds.service.impl(async function (srv) {
   // ── pauseUser ────────────────────────────────────────────────────────────
   srv.on("pauseUser", async (req) => {
     const email = callerEmail(req);
+    if (!email) return;
     const rows  = await exec(`SELECT "PAUSED" FROM "${schema}"."USERS" WHERE "EMAIL"=?`, [email]);
     if (!rows.length) req.reject(404, "User not found");
     await exec(`UPDATE "${schema}"."USERS" SET "PAUSED"=? WHERE "EMAIL"=?`, [!rows[0].PAUSED, email]);
@@ -301,6 +314,7 @@ module.exports = cds.service.impl(async function (srv) {
   // ── deleteUser ───────────────────────────────────────────────────────────
   srv.on("deleteUser", async (req) => {
     const email = callerEmail(req);
+    if (!email) return;
     await exec(
       `UPDATE "${schema}"."USERS" SET "DELETED"=TRUE,"NAME"='SAP Next Gen Member',"OPTEDIN"=FALSE WHERE "EMAIL"=?`,
       [email]

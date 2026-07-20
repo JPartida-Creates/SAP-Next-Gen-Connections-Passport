@@ -33,7 +33,9 @@ const API = {
       const text = await res.text().catch(() => res.status);
       throw new Error(`${action} failed: ${text}`);
     }
-    return res.json();
+    const data = await res.json();
+    // CAP wraps action return values in { value: ... }
+    return data?.value ?? data;
   },
   async getMyState() {
     const res = await fetch("/api/PassportService/getMyState", {
@@ -73,7 +75,7 @@ function normalizeUser(u) {
     id: u.email,                                          // UI uses .id for keys
     collectedRegions: parseJ(u.collectedRegions, {}),
     collectedOffices: parseJ(u.collectedOffices, {}),
-    badges: parseJ(u.badges, []),
+    badges: Array.isArray(parseJ(u.badges, [])) ? parseJ(u.badges, []) : [],
     interests: typeof u.interests === "string"
       ? u.interests.split(",").map(s => s.trim()).filter(Boolean)
       : (u.interests || []),
@@ -844,8 +846,7 @@ function PassportPanel({ user }) {
             style={{ fontFamily: "'IBM Plex Mono', monospace" }}>Badges</div>
           <div className="grid grid-cols-2 gap-1.5">
             {ALL_BADGES.map((b, i) => {
-              const earned = user.badges.includes(BADGE_FULL_NAMES[i]);
-              const Icon = b.icon;
+              const earned = Array.isArray(user.badges) && user.badges.includes(BADGE_FULL_NAMES[i]);              const Icon = b.icon;
               return (
                 <div key={b.name}
                   className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs relative group cursor-default"
@@ -1929,8 +1930,7 @@ function PassportPage({ user }) {
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {ALL_BADGES.map((b, i) => {
-              const earned = user.badges.includes(BADGE_FULL_NAMES[i]);
-              const Icon = b.icon;
+              const earned = Array.isArray(user.badges) && user.badges.includes(BADGE_FULL_NAMES[i]);              const Icon = b.icon;
               return (
                 <div key={b.name}
                   className="rounded-xl p-4 flex flex-col items-center text-center gap-2 relative group cursor-default"
@@ -3091,6 +3091,7 @@ export default function CoffeePassportApp() {
           setLiveUser(u);
           setCurrentUserId(u.email);
           setSignedUpIds(prev => new Set([...prev, u.email]));
+          setView("dashboard"); // returning user — skip landing/signup
         }
         setLiveMatches(state.matches || []);
         setLivePeers((state.peers || []).map(normalizeUser));
@@ -3310,20 +3311,22 @@ export default function CoffeePassportApp() {
             SAP Next Gen Connections Passport
           </span>
         </div>
-        {/* Nav tabs */}
+        {/* Nav tabs — only shown after signup */}
+        {hasSignedUp && (
         <div className="hidden sm:flex items-center gap-1 rounded-full p-1"
           style={{ backgroundColor: "#001642" }}>
-          {(hasSignedUp ? ["dashboard","passport","signup"] : ["landing","dashboard","passport","signup"]).map(v => (
+          {["dashboard","passport","signup"].map(v => (
             <button key={v} onClick={() => { setView(v); setIsAdmin(false); }}
               className="px-3 py-1.5 rounded-full text-xs font-medium capitalize transition-colors"
               style={{
                 backgroundColor: view === v && !isAdmin ? "#1B90FF" : "transparent",
                 color: view === v && !isAdmin ? "#fff" : "#89D1FF",
               }}>
-              {v === "passport" ? "My Passport" : v === "signup" ? (hasSignedUp ? "Profile" : "Sign Up") : v === "landing" ? "Home" : "Dashboard"}
+              {v === "passport" ? "My Passport" : v === "signup" ? "Profile" : "Dashboard"}
             </button>
           ))}
         </div>
+        )}
         <div className="flex items-center gap-2">
           {/* Show signed-in user name when logged in */}
           {ssoUser && (
