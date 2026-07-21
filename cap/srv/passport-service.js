@@ -64,6 +64,11 @@ function parseJSON(str, fallback) {
 
 function rowToUser(r) {
   if (!r) return null;
+  function bufStr(v, fallback) {
+    if (!v) return fallback;
+    if (Buffer.isBuffer(v)) return v.toString("utf8");
+    return v;
+  }
   return {
     email:                r.EMAIL,
     name:                 r.NAME,
@@ -76,10 +81,10 @@ function rowToUser(r) {
     paused:               r.PAUSED,
     deleted:              r.DELETED,
     consentGiven:         r.CONSENTGIVEN,
-    collectedRegions:     r.COLLECTEDREGIONS || "{}",
-    collectedOffices:     r.COLLECTEDOFFICES || "{}",
+    collectedRegions:     bufStr(r.COLLECTEDREGIONS, "{}"),
+    collectedOffices:     bufStr(r.COLLECTEDOFFICES, "{}"),
     chatsCompleted:       r.CHATSCOMPLETED || 0,
-    badges:               r.BADGES || "[]",
+    badges:               bufStr(r.BADGES, "[]"),
     lastReshuffleDate:    r.LASTRESHUFFLEDATE,
     reshufflesUsedToday:  r.RESHUFFLESUSEDTODAY || 0,
     lastMatchAcceptDate:  r.LASTMATCHACCEPTDATE,
@@ -201,13 +206,13 @@ module.exports = cds.service.impl(async function (srv) {
 
     if (existing.length > 0) {
       await exec(
-        `UPDATE "${schema}"."USERS" SET "NAME"=?,"ROLE"=?,"OFFICE"=?,"COUNTRY"=?,"REGION"=?,"INTERESTS"=?,"CONSENTGIVEN"=? WHERE "EMAIL"=?`,
+        `UPDATE "${schema}"."USERS" SET "NAME"=?,"ROLE"=?,"OFFICE"=?,"COUNTRY"=?,"REGION"=?,"INTERESTS"=?,"CONSENTGIVEN"=?,"DELETED"=FALSE,"OPTEDIN"=TRUE,"PAUSED"=FALSE WHERE "EMAIL"=?`,
         [profile.name, profile.role, profile.office, profile.country, profile.region, profile.interests, profile.consentGiven !== false, email]
       );
     } else {
       await exec(
         `INSERT INTO "${schema}"."USERS" ("EMAIL","NAME","ROLE","OFFICE","COUNTRY","REGION","INTERESTS","CONSENTGIVEN","OPTEDIN","PAUSED","DELETED","COLLECTEDREGIONS","COLLECTEDOFFICES","CHATSCOMPLETED","BADGES","RESHUFFLESUSEDTODAY","MATCHESACCEPTEDTODAY","JOINEDAT")
-         VALUES (?,?,?,?,?,?,?,TRUE,TRUE,FALSE,FALSE,'{}','[]',0,'[]',0,0,CURRENT_TIMESTAMP)`,
+         VALUES (?,?,?,?,?,?,?,TRUE,TRUE,FALSE,FALSE,'{}','{}',0,'[]',0,0,CURRENT_TIMESTAMP)`,
         [email, profile.name, profile.role, profile.office, profile.country, profile.region, profile.interests]
       );
     }
@@ -231,11 +236,14 @@ module.exports = cds.service.impl(async function (srv) {
     const id      = cds.utils.uuid();
     const now     = new Date();
     const expires = new Date(now.getTime() + MATCH_TTL_MS);
+    // hdb requires ISO string for TIMESTAMP columns, not JS Date objects
+    const nowISO     = now.toISOString().replace("T", " ").replace("Z", "");
+    const expiresISO = expires.toISOString().replace("T", " ").replace("Z", "");
 
     await exec(
       `INSERT INTO "${schema}"."MATCHES" ("ID","USERAMAIL","USERBMAIL","STATUS","CONFIRMEDA","CONFIRMEDB","ACKNOWLEDGEDBYB","REMOVED","CREATEDAT","EXPIRESAT")
        VALUES (?,?,?,'active',FALSE,FALSE,FALSE,FALSE,?,?)`,
-      [id, email, otherEmail, now, expires]
+      [id, email, otherEmail, nowISO, expiresISO]
     );
     await exec(
       `UPDATE "${schema}"."USERS" SET "LASTMATCHACCEPTDATE"=?,"MATCHESACCEPTEDTODAY"=? WHERE "EMAIL"=?`,
@@ -316,7 +324,7 @@ module.exports = cds.service.impl(async function (srv) {
     const email = callerEmail(req);
     if (!email) return;
     await exec(
-      `UPDATE "${schema}"."USERS" SET "DELETED"=TRUE,"NAME"='SAP Next Gen Member',"OPTEDIN"=FALSE WHERE "EMAIL"=?`,
+      `UPDATE "${schema}"."USERS" SET "DELETED"=TRUE,"NAME"='SAP Next Gen Member',"OPTEDIN"=FALSE,"COLLECTEDREGIONS"='{}', "COLLECTEDOFFICES"='{}', "CHATSCOMPLETED"=0,"BADGES"='[]',"RESHUFFLESUSEDTODAY"=0,"MATCHESACCEPTEDTODAY"=0 WHERE "EMAIL"=?`,
       [email]
     );
     await exec(

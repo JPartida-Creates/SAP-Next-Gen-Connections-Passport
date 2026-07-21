@@ -70,17 +70,29 @@ function normalizeUser(u) {
     if (typeof val !== "string") return val;
     try { return JSON.parse(val); } catch { return fallback; }
   }
-  return {
+  function asObj(val) {
+    const parsed = parseJ(val, {});
+    // Guard against Buffer-serialized objects, arrays, or other non-plain-objects
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    if ("type" in parsed && "data" in parsed) return {}; // Buffer remnant
+    return parsed;
+  }
+  const collectedRegions = asObj(u.collectedRegions);
+  const collectedOffices = asObj(u.collectedOffices);
+  const partial = {
     ...u,
-    id: u.email,                                          // UI uses .id for keys
-    collectedRegions: parseJ(u.collectedRegions, {}),
-    collectedOffices: parseJ(u.collectedOffices, {}),
-    badges: Array.isArray(parseJ(u.badges, [])) ? parseJ(u.badges, []) : [],
+    id: u.email,
+    collectedRegions,
+    collectedOffices,
+    chatsCompleted: u.chatsCompleted || 0,
     interests: typeof u.interests === "string"
       ? u.interests.split(",").map(s => s.trim()).filter(Boolean)
       : (u.interests || []),
     timezone: getTimezone(u.office, u.country),
   };
+  // Always re-derive badges from live stats so stale HANA data never shows
+  partial.badges = recalcBadges(partial);
+  return partial;
 }
 
 /* Normalize a match from the CAP API: add userAId/userBId aliases so the
@@ -353,7 +365,7 @@ const INTEREST_CATEGORIES = [
 const INTEREST_POOL = INTEREST_CATEGORIES.flatMap(c => c.items);
 
 const ROLES = [
-  "STAR Student", "iXp Intern", "Academy Associate", "getX Early Talent",
+  "STAR Student", "iXp Intern", "Academy Associate", "getX Early Talent", "Professional",
 ];
 
 const FIRST_NAMES = ["Maya", "Lucas", "Amara", "Felix", "Priya", "Noah", "Sofia", "Kenji",
@@ -776,8 +788,17 @@ const BADGE_FULL_NAMES = ALL_BADGES.map((_, i) => [
 ][i]);
 
 function PassportPanel({ user }) {
-  const regionEntries = Object.entries(user.collectedRegions);
-  const officeEntries = Object.entries(user.collectedOffices);
+  const [showAllBadges, setShowAllBadges] = useState(false);
+  function parseObj(val) {
+    if (!val) return {};
+    if (typeof val === "string") { try { return JSON.parse(val); } catch { return {}; } }
+    if (typeof val === "object" && !Array.isArray(val)) return val;
+    return {};
+  }
+  const collectedRegions = parseObj(user.collectedRegions);
+  const collectedOffices = parseObj(user.collectedOffices);
+  const regionEntries = Object.entries(collectedRegions).map(([k, v]) => [k, Number(v) || 0]);
+  const officeEntries = Object.entries(collectedOffices).map(([k, v]) => [k, Number(v) || 0]);
 
   return (
     <div className="flex flex-col h-full overflow-hidden" style={{ backgroundColor: "#F5FAFF" }}>
@@ -842,32 +863,56 @@ function PassportPanel({ user }) {
           }
         </div>
         <div>
-          <div className="text-[10px] uppercase tracking-widest text-[#7C8896] mb-2"
-            style={{ fontFamily: "'IBM Plex Mono', monospace" }}>Badges</div>
-          <div className="grid grid-cols-2 gap-1.5">
-            {ALL_BADGES.map((b, i) => {
-              const earned = Array.isArray(user.badges) && user.badges.includes(BADGE_FULL_NAMES[i]);              const Icon = b.icon;
-              return (
-                <div key={b.name}
-                  className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs relative group cursor-default"
-                  title={b.desc}
-                  style={{
-                    backgroundColor: earned ? "#EAF5FF" : "#F5FAFF",
-                    color: earned ? "#002060" : "#A0AABB",
-                    border: `1px solid ${earned ? "#89D1FF" : "#E0EAF5"}`,
-                  }}>
-                  <Icon size={11} color={earned ? "#DF1278" : "#7C8896"} />
-                  <span className="truncate">{b.name}</span>
-                  {/* Hover tooltip */}
-                  <div className="absolute bottom-full left-0 mb-1.5 w-44 rounded-lg px-2.5 py-2 text-[10px] leading-snug pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity z-50"
-                    style={{ backgroundColor: "#000d24", color: "#fff", boxShadow: "0 4px 16px rgba(0,0,0,0.6)" }}>
-                    {b.desc}
-                    <div className="absolute top-full left-4 border-4 border-transparent" style={{ borderTopColor: "#000d24" }} />
-                  </div>
-                </div>
-              );
-            })}
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-[10px] uppercase tracking-widest text-[#7C8896]"
+              style={{ fontFamily: "'IBM Plex Mono', monospace" }}>Badges</div>
+            <button
+              onClick={() => setShowAllBadges(v => !v)}
+              className="text-[10px] font-medium"
+              style={{ color: "#1B90FF" }}>
+              {showAllBadges ? "Show earned" : `See all ${ALL_BADGES.length}`}
+            </button>
           </div>
+          {(() => {
+            const earnedBadges = ALL_BADGES.filter((b, i) =>
+              Array.isArray(user.badges) && user.badges.includes(BADGE_FULL_NAMES[i])
+            );
+            const visibleBadges = showAllBadges ? ALL_BADGES : earnedBadges;
+            if (visibleBadges.length === 0) {
+              return (
+                <p className="text-xs text-[#7C8896]">
+                  No badges yet — confirm a chat to earn your first one.
+                </p>
+              );
+            }
+            return (
+              <div className="grid grid-cols-2 gap-1.5">
+                {visibleBadges.map((b) => {
+                  const i = ALL_BADGES.indexOf(b);
+                  const earned = Array.isArray(user.badges) && user.badges.includes(BADGE_FULL_NAMES[i]);
+                  const Icon = b.icon;
+                  return (
+                    <div key={b.name}
+                      className="flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs relative group cursor-default"
+                      title={b.desc}
+                      style={{
+                        backgroundColor: earned ? "#EAF5FF" : "#F5FAFF",
+                        color: earned ? "#002060" : "#A0AABB",
+                        border: `1px solid ${earned ? "#89D1FF" : "#E0EAF5"}`,
+                      }}>
+                      <Icon size={11} color={earned ? "#DF1278" : "#7C8896"} />
+                      <span className="truncate">{b.name}</span>
+                      <div className="absolute bottom-full left-0 mb-1.5 w-44 rounded-lg px-2.5 py-2 text-[10px] leading-snug pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity z-50"
+                        style={{ backgroundColor: "#000d24", color: "#fff", boxShadow: "0 4px 16px rgba(0,0,0,0.6)" }}>
+                        {b.desc}
+                        <div className="absolute top-full left-4 border-4 border-transparent" style={{ borderTopColor: "#000d24" }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
       </div>
     </div>
@@ -983,7 +1028,7 @@ function MatchPanel({ users, matches, currentUser, onAccept, onReshuffle, reshuf
     setIcebreakerError(false);
     setIcebreakerLoading(true);
 
-    const prompt = `You are generating a coffee chat icebreaker for SAP early talent. Generate ONE curious question (max 22 words) for someone meeting a ${suggestion.role} based in ${suggestion.office}, ${suggestion.country} (${suggestion.region} region). Their interests: ${suggestion.interests.join(", ")}. Weave their role and location together naturally. Also a 2-3 word tag like "Day-to-day", "Local insight", "Career path". Respond ONLY with valid JSON, no markdown: {"prompt":"...","tag":"..."}`;
+    const prompt = `You are generating a coffee chat icebreaker for SAP Next Gen. Generate ONE curious question (max 22 words) for someone meeting a ${suggestion.role} based in ${suggestion.office}, ${suggestion.country} (${suggestion.region} region). Their interests: ${suggestion.interests.join(", ")}. Weave their role and location together naturally. Also a 2-3 word tag like "Day-to-day", "Local insight", "Career path". Respond ONLY with valid JSON, no markdown: {"prompt":"...","tag":"..."}`;
 
     fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -1054,70 +1099,86 @@ function MatchPanel({ users, matches, currentUser, onAccept, onReshuffle, reshuf
       <PanelHeader icon={Coffee}>Coffee Match</PanelHeader>
 
       {/* Machine body */}
-      <div className="flex-1 flex flex-col items-center justify-start px-5 py-5 gap-4 overflow-y-auto">
+      <div className="flex-1 flex flex-col items-center justify-start px-7 py-5 gap-4 overflow-y-auto">
 
-        {/* Quota pips */}
+        {/* Match progress — numbered dots */}
         <div className="w-full flex items-center justify-between gap-3">
-          <div className="flex-1">
-            <div className="flex gap-1.5">
-              {Array.from({ length: MAX_MATCHES_PER_DAY }).map((_, i) => (
-                <div key={i} className="h-2 flex-1 rounded-full transition-all duration-300"
-                  style={{ backgroundColor: i < used ? "#1B90FF" : "#D1EFFF" }} />
-              ))}
-            </div>
-            <div className="text-[10px] text-[#7C8896] mt-1 font-mono">{used}/{MAX_MATCHES_PER_DAY} matches today</div>
+          <div className="flex items-center gap-2">
+            {Array.from({ length: MAX_MATCHES_PER_DAY }).map((_, i) => (
+              <div key={i} className="flex items-center gap-1.5">
+                <div className="flex items-center justify-center rounded-full text-[10px] font-bold transition-all duration-300"
+                  style={{
+                    width: 22, height: 22,
+                    backgroundColor: i < used ? "#1B90FF" : "#EAF5FF",
+                    color: i < used ? "#fff" : "#7C8896",
+                    border: `1.5px solid ${i < used ? "#1B90FF" : "#CFE6FA"}`,
+                  }}>
+                  {i < used ? <Check size={11} /> : i + 1}
+                </div>
+                {i < MAX_MATCHES_PER_DAY - 1 && (
+                  <div className="w-4 h-px" style={{ backgroundColor: i < used - 1 ? "#1B90FF" : "#CFE6FA" }} />
+                )}
+              </div>
+            ))}
+            <span className="text-[10px] text-[#7C8896] font-mono ml-1">
+              {limitReached ? "All matched today" : `Match ${used + 1} of ${MAX_MATCHES_PER_DAY}`}
+            </span>
           </div>
           <div className="text-[10px] text-[#7C8896] font-mono shrink-0">
             {reshufflesLeft} reshuffle{reshufflesLeft === 1 ? "" : "s"}
           </div>
         </div>
 
-        {/* Slot machine frame */}
+        {/* Matcher card — lighter surface to contrast with dark nav */}
+        {/* DESIGN JUDGMENT: switched from dark navy gradient to white card with blue border so the card
+            reads as the primary action surface rather than blending into the header */}
         <div className="w-full rounded-2xl overflow-hidden"
           style={{
-            background: "linear-gradient(160deg, #001642 0%, #002060 60%, #0A3D8F 100%)",
-            boxShadow: "0 8px 32px rgba(0,32,96,0.28), inset 0 1px 0 rgba(255,255,255,0.08)",
-            border: "2px solid #0A3D8F",
+            backgroundColor: "#fff",
+            boxShadow: "0 4px 24px rgba(0,32,96,0.10)",
+            border: "1.5px solid #CFE6FA",
           }}>
 
-          {/* Machine top label */}
+          {/* Card top label */}
           <div className="flex items-center justify-center gap-2 py-2.5 border-b"
-            style={{ borderColor: "rgba(255,255,255,0.08)" }}>
-            <Coffee size={13} color="#89D1FF" />
-            <span className="text-xs font-semibold tracking-[0.2em] uppercase"
-              style={{ color: "#89D1FF", fontFamily: "'IBM Plex Mono', monospace" }}>
+            style={{ borderColor: "#EAF5FF", backgroundColor: "#F5FAFF" }}>
+            <Coffee size={13} color="#1B90FF" />
+            <span className="text-xs font-semibold tracking-[0.18em] uppercase"
+              style={{ color: "#002060", fontFamily: "'IBM Plex Mono', monospace" }}>
               SAP Next Gen Matcher
             </span>
-            <Coffee size={13} color="#89D1FF" />
+            <Coffee size={13} color="#1B90FF" />
           </div>
 
-          {/* Reel window */}
+          {/* Content window */}
           <div className="mx-4 my-3 rounded-xl overflow-hidden relative"
             style={{
-              backgroundColor: "#EAF5FF",
-              border: "2px solid rgba(255,255,255,0.12)",
-              boxShadow: "inset 0 4px 16px rgba(0,32,96,0.18)",
+              backgroundColor: "#F5FAFF",
+              border: "1.5px solid #EAF5FF",
               minHeight: 180,
             }}>
 
-            {/* Top fade — reel illusion */}
-            <div className="absolute top-0 left-0 right-0 h-8 z-10 pointer-events-none"
-              style={{ background: "linear-gradient(to bottom, rgba(234,245,255,0.95), transparent)" }} />
-            <div className="absolute bottom-0 left-0 right-0 h-8 z-10 pointer-events-none"
-              style={{ background: "linear-gradient(to top, rgba(234,245,255,0.95), transparent)" }} />
-
             {limitReached ? (
-              <div className="flex flex-col items-center text-center px-5 py-6 gap-3">
-                <div className="w-12 h-12 rounded-full flex items-center justify-center mb-1"
-                  style={{ backgroundColor: "#EAF5FF" }}>
-                  <Coffee size={22} color="#1B90FF" />
+              /* DESIGN JUDGMENT: replaced disabled accept button with a dedicated success state —
+                 checkmark icon, positive messaging, spin button hidden since reshuffling for
+                 tomorrow doesn't apply in this state */
+              <div className="flex flex-col items-center text-center px-5 py-8 gap-3">
+                <div className="w-14 h-14 rounded-full flex items-center justify-center mb-1"
+                  style={{ backgroundColor: "#EAF5FF", border: "2px solid #89D1FF" }}>
+                  <Check size={26} color="#1B90FF" />
                 </div>
-                <div className="text-sm font-semibold text-[#002060]">You're all matched up for today!</div>
-                <div className="text-xs text-[#445063] leading-relaxed">
-                  You've connected with {MAX_MATCHES_PER_DAY} people today — great work. Now head to your
-                  <span className="font-semibold text-[#1B90FF]"> Active Matches</span> and schedule those chats. Every confirmed chat earns a stamp.
+                <div className="text-sm font-semibold" style={{ color: "#002060", fontFamily: "'Fraunces', serif" }}>
+                  You're all set for today
                 </div>
-                <div className="text-[10px] text-[#7C8896] mt-1">More spins available tomorrow.</div>
+                <div className="text-xs leading-relaxed" style={{ color: "#445063" }}>
+                  You've sent {MAX_MATCHES_PER_DAY} match requests today. Head to{" "}
+                  <span className="font-semibold" style={{ color: "#1B90FF" }}>Active Matches</span>{" "}
+                  to schedule your chats and earn stamps.
+                </div>
+                <div className="text-[10px] mt-1 px-3 py-1.5 rounded-full"
+                  style={{ color: "#7C8896", backgroundColor: "#EAF5FF" }}>
+                  More matches available tomorrow
+                </div>
               </div>
             ) : !suggestion ? (
               <div className="flex flex-col items-center justify-center h-44 gap-2">
@@ -1128,7 +1189,6 @@ function MatchPanel({ users, matches, currentUser, onAccept, onReshuffle, reshuf
               </div>
             ) : (
               <div key={spinKey} className={spinning ? "" : "slot-card-enter"}>
-                {/* Card content */}
                 <div className="p-4 relative overflow-hidden">
                   <div className="flex items-start gap-3 mb-3 relative">
                     <Avatar name={suggestion.name} email={suggestion.email} size={48} />
@@ -1157,8 +1217,6 @@ function MatchPanel({ users, matches, currentUser, onAccept, onReshuffle, reshuf
                       </div>
                     </div>
                   </div>
-
-                  {/* Tags row */}
                   <div className="flex flex-wrap gap-1 mb-2 relative">
                     {newRegion && <Pill color="#DF1278">✦ New region</Pill>}
                     {newOffice  && <Pill color="#1B90FF">✦ New office</Pill>}
@@ -1172,53 +1230,41 @@ function MatchPanel({ users, matches, currentUser, onAccept, onReshuffle, reshuf
             )}
           </div>
 
-          {/* Lever + buttons row */}
-          <div className="flex items-center justify-between px-4 pb-4 gap-3">
-
-            {/* Accept button */}
-            <button
-              onClick={handleAccept}
-              disabled={!suggestion || limitReached || spinning}
-              className="flex-1 flex items-center justify-center gap-2 rounded-xl py-3 font-semibold text-sm transition-all active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed"
-              style={{ backgroundColor: "#1B90FF", color: "#fff", boxShadow: "0 2px 8px rgba(27,144,255,0.4)" }}>
-              <Check size={15} /> Accept match
-            </button>
-
-            {/* Spin button */}
-            <div className="flex flex-col items-center gap-1.5 shrink-0">
-              <div className="text-[9px] font-mono uppercase tracking-widest"
-                style={{ color: "rgba(137,209,255,0.7)" }}>spin</div>
-
+          {/* Buttons row — only shown when there are matches left */}
+          {!limitReached && (
+            <div className="flex items-center justify-between px-4 pb-4 gap-3">
               <button
-                onClick={handleReshuffle}
-                disabled={spinning}
-                className={`relative flex items-center justify-center rounded-full transition-all disabled:cursor-not-allowed ${leverActive ? "spin-btn-go" : leverShaking ? "spin-btn-shake" : reshufflesLeft > 0 ? "spin-btn-pulse" : ""}`}
-                title={reshufflesLeft > 0 ? "Spin for a new match" : "No spins left"}
-                style={{
-                  width: 52, height: 52,
-                  backgroundColor: reshufflesLeft > 0 ? "#DF1278" : "#2A2A3A",
-                  boxShadow: reshufflesLeft > 0
-                    ? "0 4px 14px rgba(223,18,120,0.4), inset 0 1px 0 rgba(255,255,255,0.2)"
-                    : "inset 0 2px 4px rgba(0,0,0,0.4)",
-                  border: `2px solid ${reshufflesLeft > 0 ? "rgba(255,111,173,0.6)" : "rgba(255,255,255,0.08)"}`,
-                }}>
-                <Shuffle size={22} color={reshufflesLeft > 0 ? "#fff" : "#555"} />
-                <div style={{
-                  position: "absolute", top: 5, left: 9,
-                  width: 16, height: 9, borderRadius: "50%",
-                  backgroundColor: "rgba(255,255,255,0.2)",
-                  pointerEvents: "none",
-                }} />
+                onClick={handleAccept}
+                disabled={!suggestion || spinning}
+                className="flex-1 flex items-center justify-center gap-2 rounded-xl py-3 font-semibold text-sm transition-all active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed"
+                style={{ backgroundColor: "#1B90FF", color: "#fff", boxShadow: "0 2px 8px rgba(27,144,255,0.3)" }}>
+                <Check size={15} /> Accept match
               </button>
 
-              <div className="flex gap-1">
-                {Array.from({ length: MAX_RESHUFFLES_PER_DAY }).map((_, i) => (
-                  <div key={i} className="w-1.5 h-1.5 rounded-full transition-all duration-300"
-                    style={{ backgroundColor: i < reshufflesLeft ? "#DF1278" : "rgba(255,255,255,0.15)" }} />
-                ))}
+              <div className="flex flex-col items-center gap-1.5 shrink-0">
+                <div className="text-[9px] font-mono uppercase tracking-widest text-[#7C8896]">spin</div>
+                <button
+                  onClick={handleReshuffle}
+                  disabled={spinning}
+                  className={`relative flex items-center justify-center rounded-full transition-all disabled:cursor-not-allowed ${leverActive ? "spin-btn-go" : leverShaking ? "spin-btn-shake" : reshufflesLeft > 0 ? "spin-btn-pulse" : ""}`}
+                  title={reshufflesLeft > 0 ? "Spin for a new match" : "No spins left"}
+                  style={{
+                    width: 52, height: 52,
+                    backgroundColor: reshufflesLeft > 0 ? "#DF1278" : "#E8ECF0",
+                    boxShadow: reshufflesLeft > 0 ? "0 4px 14px rgba(223,18,120,0.35)" : "none",
+                    border: `2px solid ${reshufflesLeft > 0 ? "rgba(255,111,173,0.6)" : "#CFD8DC"}`,
+                  }}>
+                  <Shuffle size={22} color={reshufflesLeft > 0 ? "#fff" : "#AAB0B8"} />
+                </button>
+                <div className="flex gap-1">
+                  {Array.from({ length: MAX_RESHUFFLES_PER_DAY }).map((_, i) => (
+                    <div key={i} className="w-1.5 h-1.5 rounded-full transition-all duration-300"
+                      style={{ backgroundColor: i < reshufflesLeft ? "#DF1278" : "#E0EAF5" }} />
+                  ))}
+                </div>
               </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* AI Icebreaker */}
@@ -1307,7 +1353,6 @@ function MatchPanel({ users, matches, currentUser, onAccept, onReshuffle, reshuf
 function MatchesPanel({ matches, users, currentUser, onConfirm, onRemove, onAcknowledge }) {
   const [confirmRemoveId, setConfirmRemoveId] = useState(null);
   const [infoOpenId, setInfoOpenId] = useState(null);
-  const [icebreakers, setIcebreakers] = useState({});
   const [tzOpenId, setTzOpenId] = useState(null);
   const usersById = Object.fromEntries(users.map(u => [u.id, u]));
 
@@ -1348,29 +1393,6 @@ ${myName}
     return { subject, body, teamsLink };
   }
 
-  function fetchIcebreaker(matchId, other) {
-    setIcebreakers(prev => ({ ...prev, [matchId]: { loading: true, prompt: null, tag: null, error: false } }));
-    const prompt = `Generate ONE coffee chat icebreaker question (max 22 words) for someone meeting a ${other.role} based in ${other.office}, ${other.country}. Their interests: ${other.interests.join(", ")}. Make it curious and role/location specific. Respond ONLY with valid JSON: {"prompt":"...","tag":"..."}`;
-    fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": import.meta.env.VITE_ANTHROPIC_API_KEY || "",
-        "anthropic-version": "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true",
-      },
-      body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 200, messages: [{ role: "user", content: prompt }] }),
-    })
-      .then(r => { if (!r.ok) throw new Error(); return r.json(); })
-      .then(data => {
-        const text = (data?.content || []).filter(b => b.type === "text").map(b => b.text).join("").replace(/```json|```/g, "").trim();
-        const parsed = JSON.parse(text);
-        if (parsed.prompt) setIcebreakers(prev => ({ ...prev, [matchId]: { loading: false, prompt: parsed.prompt, tag: parsed.tag, error: false } }));
-        else throw new Error();
-      })
-      .catch(() => setIcebreakers(prev => ({ ...prev, [matchId]: { loading: false, prompt: null, tag: null, error: true } })));
-  }
-
   const myMatches = matches.filter(m =>
     (m.userAId === currentUser.id || m.userBId === currentUser.id) && !m.removed
   );
@@ -1391,8 +1413,6 @@ ${myName}
     const isRemoving = confirmRemoveId === m.id;
     const showingInfo = infoOpenId === m.id;
     const infoRef = React.useRef(null);
-    const icebreakerState = icebreakers[m.id];
-    const [icebreakerOpen, setIcebreakerOpen] = useState(false);
     const [copied, setCopied] = useState(false);
     const [showInvite, setShowInvite] = useState(false);
     const [notesOpen, setNotesOpen] = useState(false);
@@ -1409,7 +1429,8 @@ ${myName}
     const theirTimeStr = fmtTimeInTz(theirIANA);
 
     return (
-      <div className="border-b" style={{ borderColor: "#EAF5FF" }}>
+      <div className="mx-3 mb-2 rounded-2xl overflow-hidden"
+        style={{ backgroundColor: "#fff", border: "1.5px solid #EAF5FF", boxShadow: "0 2px 8px rgba(0,32,96,0.06)" }}>
         <div className="px-4 py-3 flex items-center gap-3">
           <Avatar name={other.name} email={other.email} size={32} />
           <div className="flex-1 min-w-0">
@@ -1492,70 +1513,6 @@ ${myName}
               <Btn sm variant="ghost" onClick={() => setConfirmRemoveId(null)}>Cancel</Btn>
               <Btn sm variant="magenta" onClick={() => { onRemove(m.id); setConfirmRemoveId(null); }}>Remove</Btn>
             </div>
-          </div>
-        )}
-
-        {/* Icebreaker section — active matches only */}
-        {m.status === "active" && (
-          <div className="mx-4 mb-3">
-            {!icebreakerOpen ? (
-              <button
-                onClick={() => {
-                  setIcebreakerOpen(true);
-                  if (!icebreakerState) fetchIcebreaker(m.id, other);
-                }}
-                className="flex items-center gap-1.5 text-[10px] font-medium rounded-full px-2.5 py-1 transition-colors"
-                style={{ backgroundColor: "#EAF5FF", color: "#1B90FF", border: "1px solid #D1EFFF" }}>
-                <Sparkles size={10} /> Get icebreaker
-              </button>
-            ) : (
-              <div className="rounded-xl px-3 py-2.5"
-                style={{ backgroundColor: "#EAF5FF", border: "1px solid #D1EFFF" }}>
-                <div className="flex items-center justify-between mb-1">
-                  <div className="flex items-center gap-1">
-                    <Sparkles size={10} color="#1B90FF" />
-                    <span className="text-[9px] font-semibold uppercase tracking-widest"
-                      style={{ color: "#1B90FF", fontFamily: "'IBM Plex Mono', monospace" }}>
-                      AI Icebreaker
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {!icebreakerState?.loading && icebreakerState?.tag && (
-                      <span className="text-[9px] rounded-full px-1.5 py-0.5"
-                        style={{ backgroundColor: "#D1EFFF", color: "#002060" }}>
-                        {icebreakerState.tag}
-                      </span>
-                    )}
-                    <button onClick={() => setIcebreakerOpen(false)}
-                      className="text-[#7C8896]"><X size={11} /></button>
-                  </div>
-                </div>
-                {icebreakerState?.loading && (
-                  <div className="flex items-center gap-1.5">
-                    {[0,1,2].map(i => (
-                      <div key={i} className="w-1 h-1 rounded-full"
-                        style={{ backgroundColor: "#1B90FF", opacity: 0.5,
-                          animation: `bounce 1s ease-in-out ${i*0.18}s infinite alternate` }} />
-                    ))}
-                    <span className="text-[10px] text-[#7C8896]">Generating…</span>
-                  </div>
-                )}
-                {icebreakerState?.error && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px]" style={{ color: "#DF1278" }}>
-                      {import.meta.env.VITE_ANTHROPIC_API_KEY ? "Couldn't reach AI — check connection." : "AI unavailable (no API key)."}
-                    </span>
-                    <button onClick={() => fetchIcebreaker(m.id, other)}
-                      className="text-[10px] font-medium rounded-full px-2 py-0.5"
-                      style={{ backgroundColor: "#1B90FF", color: "#fff" }}>Retry</button>
-                  </div>
-                )}
-                {icebreakerState?.prompt && (
-                  <p className="text-xs leading-snug" style={{ color: "#002060" }}>
-                    {icebreakerState.prompt}
-                  </p>
-                )}\n              </div>
-            )}
           </div>
         )}
 
@@ -1667,13 +1624,13 @@ ${myName}
                 {/* Preview */}
                 <div className="rounded-lg p-2.5 text-[10px] leading-relaxed font-mono overflow-y-auto"
                   style={{ backgroundColor: "#fff", border: "1px solid #EAF5FF", maxHeight: 120, color: "#445063", whiteSpace: "pre-wrap" }}>
-                  {`Subject: ☕ Coffee Chat: ${currentUser.name} × ${other.name} | SAP Next Gen Connections Passport\n\nHi ${other.name.split(" ")[0]}, I'd love to connect for a 30-min coffee chat via the SAP Next Gen Connections Passport! Topic: ${icebreakerState?.prompt || "Share your SAP experience so far."}  Please confirm in the app after we chat to earn our stamps! 🎖️`}
+                  {`Subject: ☕ Coffee Chat: ${currentUser.name} × ${other.name} | SAP Next Gen Connections Passport\n\nHi ${other.name.split(" ")[0]}, I'd love to connect for a 30-min coffee chat via the SAP Next Gen Connections Passport! Topic: Share your SAP experience so far.  Please confirm in the app after we chat to earn our stamps! 🎖️`}
                 </div>
 
                 <div className="flex gap-2">
                   <button
                     onClick={() => {
-                      const { subject, body } = generateInvite(m, other, icebreakerState);
+                      const { subject, body } = generateInvite(m, other, null);
                       navigator.clipboard.writeText(`Subject: ${subject}\n\n${body}`)
                         .then(() => { setCopied(true); setTimeout(() => setCopied(false), 2500); })
                         .catch(() => {});
@@ -1686,7 +1643,7 @@ ${myName}
                     {copied ? <><Check size={12} /> Copied!</> : <>📋 Copy invite</>}
                   </button>
                   <button
-                    onClick={() => window.open(generateInvite(m, other, icebreakerState).teamsLink, "_blank")}
+                    onClick={() => window.open(generateInvite(m, other, null).teamsLink, "_blank")}
                     className="flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 text-[11px] font-semibold"
                     style={{ backgroundColor: "#5059C9", color: "#fff" }}>
                     🟦 Open in Teams
@@ -1753,7 +1710,7 @@ ${myName}
   }
 
   return (
-    <div className="flex flex-col h-full overflow-hidden">
+    <div className="flex flex-col h-full overflow-hidden" style={{ backgroundColor: "#fff" }}>
       <PanelHeader icon={Users}>Matches</PanelHeader>
 
       {/* Expiry reminder banner */}
@@ -1768,9 +1725,10 @@ ${myName}
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto px-2 pt-2 pb-3 space-y-2">
         {myMatches.length === 0 ? (
-          <div className="p-6 text-center">
+          <div className="mt-6 p-6 text-center rounded-2xl mx-1"
+            style={{ backgroundColor: "#F5FAFF", border: "1.5px dashed #CFE6FA" }}>
             <Coffee size={24} className="mx-auto mb-2" color="#7C8896" />
             <p className="text-xs text-[#7C8896]">No matches yet — accept one to start.</p>
           </div>
@@ -1780,8 +1738,7 @@ ${myName}
           return (
             <div key={g.key}>
               {/* Section label */}
-              <div className="flex items-center gap-2 px-4 py-2 sticky top-0 z-10"
-                style={{ backgroundColor: "#F5FAFF", borderBottom: "1px solid #EAF5FF" }}>
+              <div className="flex items-center gap-2 px-2 py-1.5 mb-1">
                 <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: g.color }} />
                 <span className="text-[10px] font-semibold uppercase tracking-widest"
                   style={{ color: g.color, fontFamily: "'IBM Plex Mono', monospace" }}>
@@ -1801,8 +1758,13 @@ ${myName}
 /* ---------------------- Dedicated Passport Page ---------------------- */
 
 function PassportPage({ user }) {
-  const regionEntries = Object.entries(user.collectedRegions);
-  const officeEntries = Object.entries(user.collectedOffices);
+  const [showAllBadges, setShowAllBadges] = useState(false);
+  const collectedRegions = (user.collectedRegions && typeof user.collectedRegions === "object" && !Array.isArray(user.collectedRegions))
+    ? user.collectedRegions : {};
+  const collectedOffices = (user.collectedOffices && typeof user.collectedOffices === "object" && !Array.isArray(user.collectedOffices))
+    ? user.collectedOffices : {};
+  const regionEntries = Object.entries(collectedRegions).map(([k, v]) => [k, Number(v) || 0]);
+  const officeEntries = Object.entries(collectedOffices).map(([k, v]) => [k, Number(v) || 0]);
   const totalStamps = regionEntries.reduce((s,[,c])=>s+c,0) + officeEntries.reduce((s,[,c])=>s+c,0);
 
   return (
@@ -1877,7 +1839,7 @@ function PassportPage({ user }) {
                 </div>
               ))}
               {/* Ghost stamps for uncollected regions */}
-              {REGIONS.filter(r => !user.collectedRegions[r]).map(r => (
+              {REGIONS.filter(r => !collectedRegions[r]).map(r => (
                 <div key={r} className="flex flex-col items-center justify-center rounded-xl p-3 gap-2"
                   style={{ minWidth: 90, minHeight: 110, border: "2px dashed #CFE6FA", opacity: 0.4 }}>
                   <Globe2 size={24} color="#7C8896" />
@@ -1924,38 +1886,64 @@ function PassportPage({ user }) {
 
         {/* Milestone badges */}
         <div>
-          <div className="flex items-center gap-2 mb-4">
-            <Award size={15} color="#002060" />
-            <h2 className="text-sm font-semibold text-[#002060]">Milestone Badges</h2>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Award size={15} color="#002060" />
+              <h2 className="text-sm font-semibold text-[#002060]">Milestone Badges</h2>
+            </div>
+            <button
+              onClick={() => setShowAllBadges(v => !v)}
+              className="text-xs font-medium"
+              style={{ color: "#1B90FF" }}>
+              {showAllBadges ? "Show earned" : `See all ${ALL_BADGES.length}`}
+            </button>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {ALL_BADGES.map((b, i) => {
-              const earned = Array.isArray(user.badges) && user.badges.includes(BADGE_FULL_NAMES[i]);              const Icon = b.icon;
+          {(() => {
+            const earnedBadges = ALL_BADGES.filter((b, i) =>
+              Array.isArray(user.badges) && user.badges.includes(BADGE_FULL_NAMES[i])
+            );
+            const visibleBadges = showAllBadges ? ALL_BADGES : earnedBadges;
+            if (visibleBadges.length === 0) {
               return (
-                <div key={b.name}
-                  className="rounded-xl p-4 flex flex-col items-center text-center gap-2 relative group cursor-default"
-                  style={{
-                    backgroundColor: earned ? "#EAF5FF" : "#F5FAFF",
-                    border: `1px solid ${earned ? "#89D1FF" : "#E0EAF5"}`,
-                  }}>
-                  <div className="w-10 h-10 rounded-full flex items-center justify-center"
-                    style={{ backgroundColor: earned ? "#002060" : "#E8F3FC" }}>
-                    <Icon size={18} color={earned ? "#89D1FF" : "#B0C4D8"} />
-                  </div>
-                  <span className="text-xs font-medium" style={{ color: earned ? "#002060" : "#A0AABB" }}>{BADGE_FULL_NAMES[i]}</span>
-                  {earned && (
-                    <span className="text-[9px] font-bold rounded-full px-2 py-0.5"
-                      style={{ backgroundColor: "#DF1278", color: "#fff" }}>EARNED</span>
-                  )}
-                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-44 rounded-lg px-2.5 py-2 text-[10px] leading-snug pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity z-50 text-left"
-                    style={{ backgroundColor: "#000d24", color: "#fff", boxShadow: "0 4px 16px rgba(0,0,0,0.6)" }}>
-                    {b.desc}
-                    <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent" style={{ borderTopColor: "#000d24" }} />
-                  </div>
+                <div className="rounded-2xl border-2 border-dashed p-8 text-center" style={{ borderColor: "#CFE6FA" }}>
+                  <Award size={24} className="mx-auto mb-2" color="#CFE6FA" />
+                  <p className="text-sm text-[#7C8896]">No badges yet — confirm a coffee chat to earn your first one.</p>
                 </div>
               );
-            })}
-          </div>
+            }
+            return (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {visibleBadges.map((b) => {
+                  const i = ALL_BADGES.indexOf(b);
+                  const earned = Array.isArray(user.badges) && user.badges.includes(BADGE_FULL_NAMES[i]);
+                  const Icon = b.icon;
+                  return (
+                    <div key={b.name}
+                      className="rounded-xl p-4 flex flex-col items-center text-center gap-2 relative group cursor-default"
+                      style={{
+                        backgroundColor: earned ? "#EAF5FF" : "#F5FAFF",
+                        border: `1px solid ${earned ? "#89D1FF" : "#E0EAF5"}`,
+                      }}>
+                      <div className="w-10 h-10 rounded-full flex items-center justify-center"
+                        style={{ backgroundColor: earned ? "#002060" : "#E8F3FC" }}>
+                        <Icon size={18} color={earned ? "#89D1FF" : "#B0C4D8"} />
+                      </div>
+                      <span className="text-xs font-medium" style={{ color: earned ? "#002060" : "#A0AABB" }}>{BADGE_FULL_NAMES[i]}</span>
+                      {earned && (
+                        <span className="text-[9px] font-bold rounded-full px-2 py-0.5"
+                          style={{ backgroundColor: "#DF1278", color: "#fff" }}>EARNED</span>
+                      )}
+                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-44 rounded-lg px-2.5 py-2 text-[10px] leading-snug pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity z-50 text-left"
+                        style={{ backgroundColor: "#000d24", color: "#fff", boxShadow: "0 4px 16px rgba(0,0,0,0.6)" }}>
+                        {b.desc}
+                        <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent" style={{ borderTopColor: "#000d24" }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
 
       </div>
@@ -1993,6 +1981,7 @@ function SignupPage({ onComplete, users, editMode = false, initialData = null, o
   const [showReportModal, setShowReportModal] = useState(false);
   const [reportCopied, setReportCopied] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [otherInterest, setOtherInterest] = useState("");
 
   // Reset form if initialData changes (e.g. switching users)
@@ -2051,7 +2040,7 @@ function SignupPage({ onComplete, users, editMode = false, initialData = null, o
               What's in it for you
             </div>
             <div className="space-y-2.5 text-xs text-white">
-              <div className="flex gap-2.5"><span className="text-[#DF1278] font-bold shrink-0">01</span><span>Get matched with Early Talent from across SAP's global offices and regions.</span></div>
+              <div className="flex gap-2.5"><span className="text-[#DF1278] font-bold shrink-0">01</span><span>Get matched with SAP Next Gen from across SAP's global offices and regions.</span></div>
               <div className="flex gap-2.5"><span className="text-[#DF1278] font-bold shrink-0">02</span><span>Have a coffee chat, confirm you met, and earn passport stamps for every connection.</span></div>
               <div className="flex gap-2.5"><span className="text-[#DF1278] font-bold shrink-0">03</span><span>Collect stamps from different regions and offices to unlock milestone badges.</span></div>
             </div>
@@ -2082,41 +2071,9 @@ function SignupPage({ onComplete, users, editMode = false, initialData = null, o
         {/* Step 0 — Privacy & Consent (signup only) */}
         {step === 0 && !editMode && (
           <div className="space-y-4">
-            <div className="rounded-2xl bg-white p-6 space-y-4" style={{ border: "1px solid #CFE6FA" }}>
-              <h2 className="font-semibold text-[#002060]" style={{ fontFamily: "'Fraunces', serif" }}>
-                Privacy &amp; Data Notice
-              </h2>
-              <div className="grid grid-cols-2 gap-3">
-                {[
-                  { emoji: "📋", title: "What we collect", body: "Name, role, office & interests — used only for matching." },
-                  { emoji: "👥", title: "Who can see it", body: "Other participants see your name, role, office & badges. Stamps are private." },
-                  { emoji: "🗓️", title: "How long we keep it", body: "For the duration of your participation. Delete anytime from your profile." },
-                  { emoji: "⚖️", title: "Your rights", body: "Access, correct or delete your data at any time under GDPR." },
-                ].map(({ emoji, title, body }) => (
-                  <div key={title} className="rounded-xl p-3 space-y-1"
-                    style={{ backgroundColor: "#F5FAFF", border: "1px solid #EAF5FF" }}>
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-sm">{emoji}</span>
-                      <span className="text-xs font-semibold text-[#002060]">{title}</span>
-                    </div>
-                    <p className="text-xs text-[#445063] leading-relaxed">{body}</p>
-                  </div>
-                ))}
-              </div>
-              <div className="space-y-3 pt-1">
-                <label className="flex items-start gap-3 cursor-pointer">
-                  <input type="checkbox" checked={consent.dataProcessing}
-                    onChange={e => setConsent(c => ({ ...c, dataProcessing: e.target.checked }))}
-                    className="mt-0.5 shrink-0 accent-[#002060]" />
-                  <span className="text-xs text-[#445063] leading-relaxed">
-                    I have read the privacy notice and consent to SAP collecting and using my name, role, office, and interests for the Connections Passport matching program. My profile will be visible to other participants. <span className="text-[#DF1278] font-semibold">*</span>
-                  </span>
-                </label>
-              </div>
-            </div>
 
-            {/* Community Guidelines */}
-            <div className="rounded-2xl bg-white p-6 space-y-4" style={{ border: "1px solid #CFE6FA" }}>
+            {/* Community Guidelines + Privacy — single card */}
+            <div className="rounded-2xl bg-white p-6 space-y-5" style={{ border: "1px solid #CFE6FA" }}>
               <h2 className="font-semibold text-[#002060]" style={{ fontFamily: "'Fraunces', serif" }}>
                 Community Guidelines
               </h2>
@@ -2144,7 +2101,8 @@ function SignupPage({ onComplete, users, editMode = false, initialData = null, o
                   </div>
                 ))}
               </div>
-              <div className="space-y-3 pt-1">
+
+              <div className="border-t pt-4 space-y-3" style={{ borderColor: "#EAF5FF" }}>
                 <label className="flex items-start gap-3 cursor-pointer">
                   <input type="checkbox" checked={consent.guidelines}
                     onChange={e => setConsent(c => ({ ...c, guidelines: e.target.checked }))}
@@ -2153,13 +2111,82 @@ function SignupPage({ onComplete, users, editMode = false, initialData = null, o
                     I agree to follow the Community Guidelines. <span className="text-[#DF1278] font-semibold">*</span>
                   </span>
                 </label>
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input type="checkbox" checked={consent.dataProcessing}
+                    onChange={e => setConsent(c => ({ ...c, dataProcessing: e.target.checked }))}
+                    className="mt-0.5 shrink-0 accent-[#002060]" />
+                  <span className="text-xs text-[#445063] leading-relaxed">
+                    I have read and agree to the{" "}
+                    <button onClick={() => setShowPrivacyModal(true)}
+                      className="font-medium underline underline-offset-2"
+                      style={{ color: "#1B90FF" }}>
+                      Privacy &amp; Data Notice
+                    </button>
+                    . <span className="text-[#DF1278] font-semibold">*</span>
+                  </span>
+                </label>
               </div>
             </div>
+
             <button onClick={() => setStep(1)} disabled={!consentValid}
               className="w-full rounded-xl py-3 font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
               style={{ backgroundColor: "#002060", color: "#fff" }}>
               I agree — continue <ArrowRight size={15} />
             </button>
+
+            {/* Privacy full notice modal */}
+            {showPrivacyModal && (
+              <div style={{
+                position: "fixed", inset: 0, zIndex: 300,
+                backgroundColor: "rgba(0,32,96,0.6)", backdropFilter: "blur(4px)",
+                display: "flex", alignItems: "center", justifyContent: "center", padding: 24,
+              }}>
+                <div className="rounded-2xl bg-white w-full max-w-lg p-6 space-y-4 overflow-y-auto"
+                  style={{ maxHeight: "80vh", boxShadow: "0 24px 64px rgba(0,0,0,0.3)" }}>
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-semibold text-[#002060]" style={{ fontFamily: "'Fraunces', serif" }}>
+                      Privacy &amp; Data Notice
+                    </h3>
+                    <button onClick={() => setShowPrivacyModal(false)} style={{ color: "#7C8896" }}>
+                      <X size={16} />
+                    </button>
+                  </div>
+                  <div className="space-y-4 text-xs text-[#445063] leading-relaxed">
+                    <div className="grid grid-cols-2 gap-3">
+                      {[
+                        { emoji: "📋", title: "What we collect", body: "Name, role, office & interests — used only for matching." },
+                        { emoji: "👥", title: "Who can see it", body: "Other participants see your name, role, office & badges. Stamps are private." },
+                        { emoji: "🗓️", title: "How long we keep it", body: "For the duration of your participation. Delete anytime from your profile." },
+                        { emoji: "⚖️", title: "Your rights", body: "Access, correct or delete your data at any time under GDPR." },
+                      ].map(({ emoji, title, body }) => (
+                        <div key={title} className="rounded-xl p-3 space-y-1"
+                          style={{ backgroundColor: "#F5FAFF", border: "1px solid #EAF5FF" }}>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-sm">{emoji}</span>
+                            <span className="font-semibold text-[#002060]">{title}</span>
+                          </div>
+                          <p>{body}</p>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="rounded-xl p-4 space-y-2" style={{ backgroundColor: "#F5FAFF", border: "1px solid #EAF5FF" }}>
+                      <p className="font-semibold text-[#002060]">Data retention</p>
+                      <p>Your data is retained for the duration of the SAP Next Gen Connections Passport program or until you delete your account, whichever comes first.</p>
+                    </div>
+                    <div className="rounded-xl p-4 space-y-2" style={{ backgroundColor: "#F5FAFF", border: "1px solid #EAF5FF" }}>
+                      <p className="font-semibold text-[#002060]">Your rights</p>
+                      <p>Under GDPR you have the right to access, rectify, erase, and port your data, and to object to processing. Contact <span className="font-semibold text-[#002060]">SAPnextgen@sap.com</span> to exercise these rights.</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => { setShowPrivacyModal(false); setConsent(c => ({ ...c, dataProcessing: true })); }}
+                    className="w-full rounded-xl py-2.5 text-sm font-semibold"
+                    style={{ backgroundColor: "#002060", color: "#fff" }}>
+                    I have read this — close
+                  </button>
+                </div>
+              </div>
+            )}
 
             {/* Report issues modal */}
             {showReportModal && (
@@ -3004,6 +3031,222 @@ function NotificationBanner({ notifications, onDismiss }) {
   );
 }
 
+/* ── Tutorial Overlay ──────────────────────────────────────────────────────── */
+
+const TUTORIAL_STEPS = [
+  {
+    icon: Stamp,
+    title: "Welcome to your Passport",
+    body: "This is your personal Connections Passport. Every coffee chat you complete earns a stamp — collect them from different regions and offices around the world.",
+    highlight: null,
+  },
+  {
+    icon: Shuffle,
+    title: "Spin to find a match",
+    body: "In the center panel, hit the pink spin button to get a suggested colleague. You can reshuffle up to 3 times a day if you'd like a different suggestion.",
+    highlight: null,
+  },
+  {
+    icon: Check,
+    title: "Accept a match",
+    body: "When you find someone you'd like to meet, click Accept match. You can accept up to 3 matches per day. They'll see you in their Active Matches.",
+    highlight: null,
+  },
+  {
+    icon: Coffee,
+    title: "Have your chat & confirm",
+    body: "Schedule a 30-minute chat using the invite link in Active Matches. After you've met, click We met — both of you need to confirm to earn your stamps.",
+    highlight: null,
+  },
+  {
+    icon: Award,
+    title: "Track your progress",
+    body: "Head to the My Passport tab any time to see your stamps, badges, and how many regions and offices you've collected. Good luck — and happy connecting!",
+    highlight: null,
+  },
+];
+
+function TutorialOverlay({ onClose }) {
+  const [step, setStep] = useState(0);
+  const total = TUTORIAL_STEPS.length;
+  const s = TUTORIAL_STEPS[step];
+  const Icon = s.icon;
+
+  function finish() {
+    localStorage.setItem("cp-tutorial-done", "1");
+    onClose();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ backgroundColor: "rgba(0,22,66,0.7)", backdropFilter: "blur(4px)" }}>
+      <div className="w-full max-w-sm rounded-3xl overflow-hidden"
+        style={{ backgroundColor: "#fff", boxShadow: "0 24px 64px rgba(0,32,96,0.35)" }}>
+
+        {/* Header bar */}
+        <div className="px-6 pt-6 pb-4"
+          style={{ background: "linear-gradient(135deg, #001642 0%, #002060 100%)" }}>
+          <div className="flex items-center justify-between mb-4">
+            <span className="text-[10px] font-mono tracking-[0.2em] uppercase"
+              style={{ color: "#89D1FF" }}>
+              Getting started · {step + 1} of {total}
+            </span>
+            <button onClick={finish} style={{ color: "rgba(255,255,255,0.4)" }}>
+              <X size={16} />
+            </button>
+          </div>
+          {/* Progress bar */}
+          <div className="flex gap-1.5">
+            {Array.from({ length: total }).map((_, i) => (
+              <div key={i} className="flex-1 h-1 rounded-full transition-all duration-300"
+                style={{ backgroundColor: i <= step ? "#1B90FF" : "rgba(255,255,255,0.15)" }} />
+            ))}
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="px-6 py-6 flex flex-col items-center text-center gap-4">
+          <div className="w-16 h-16 rounded-2xl flex items-center justify-center"
+            style={{ backgroundColor: "#EAF5FF" }}>
+            <Icon size={28} color="#002060" />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold mb-2"
+              style={{ color: "#002060", fontFamily: "'Fraunces', serif" }}>
+              {s.title}
+            </h2>
+            <p className="text-sm leading-relaxed" style={{ color: "#445063" }}>
+              {s.body}
+            </p>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 pb-6 flex items-center justify-between gap-3">
+          <button
+            onClick={() => setStep(s => s - 1)}
+            disabled={step === 0}
+            className="flex items-center gap-1.5 text-sm font-medium rounded-full px-4 py-2 disabled:opacity-0 transition-opacity"
+            style={{ color: "#445063", backgroundColor: "#F5FAFF", border: "1px solid #CFE6FA" }}>
+            <ArrowLeft size={14} /> Back
+          </button>
+          {step < total - 1 ? (
+            <button
+              onClick={() => setStep(s => s + 1)}
+              className="flex items-center gap-1.5 text-sm font-semibold rounded-full px-5 py-2"
+              style={{ backgroundColor: "#1B90FF", color: "#fff" }}>
+              Next <ArrowRight size={14} />
+            </button>
+          ) : (
+            <button
+              onClick={finish}
+              className="flex items-center gap-1.5 text-sm font-semibold rounded-full px-5 py-2"
+              style={{ backgroundColor: "#DF1278", color: "#fff" }}>
+              Let's go! <Sparkles size={14} />
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Feedback Button ───────────────────────────────────────────────────────── */
+
+function FeedbackButton({ open, onToggle }) {
+  const [text, setText] = useState("");
+  const [copied, setCopied] = useState(false);
+  const ref = React.useRef(null);
+
+  React.useEffect(() => {
+    if (!open) { setText(""); setCopied(false); }
+  }, [open]);
+
+  React.useEffect(() => {
+    function handleClick(e) {
+      if (open && ref.current && !ref.current.contains(e.target)) onToggle();
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open, onToggle]);
+
+  function handleCopy() {
+    const msg = `To: SAPnextgen@sap.com\nSubject: Connections Passport — Feedback\n\nHi SAP Next Gen E2E Team,\n\n${text || "[Please describe your feedback or issue here]"}\n\nThank you.`;
+    navigator.clipboard.writeText(msg)
+      .then(() => { setCopied(true); setTimeout(() => setCopied(false), 3000); })
+      .catch(() => {});
+  }
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        onClick={onToggle}
+        title="Share feedback"
+        className="flex items-center justify-center w-8 h-8 rounded-full transition-colors"
+        style={{ backgroundColor: open ? "#DF1278" : "#0A3D8F", color: "#fff" }}>
+        <span style={{ fontSize: 15, lineHeight: 1 }}>{open ? "×" : "💬"}</span>
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-10 w-72 rounded-2xl overflow-hidden z-40"
+          style={{ backgroundColor: "#fff", boxShadow: "0 8px 32px rgba(0,32,96,0.25)", border: "1px solid #CFE6FA" }}>
+          <div className="px-4 py-3 border-b" style={{ borderColor: "#EAF5FF", backgroundColor: "#F5FAFF" }}>
+            <div className="text-xs font-semibold" style={{ color: "#002060" }}>Share feedback or report an issue</div>
+            <div className="text-[10px] mt-0.5" style={{ color: "#7C8896" }}>
+              Write your message, then copy and send to SAPnextgen@sap.com
+            </div>
+          </div>
+          <div className="p-4 space-y-3">
+            <textarea
+              value={text}
+              onChange={e => setText(e.target.value)}
+              placeholder="Describe your feedback or issue…"
+              rows={4}
+              className="w-full rounded-xl px-3 py-2.5 text-xs resize-none outline-none"
+              style={{ border: "1px solid #CFE6FA", color: "#002060", backgroundColor: "#FAFCFF" }}
+            />
+            <button
+              onClick={handleCopy}
+              className="w-full rounded-xl py-2.5 text-xs font-semibold flex items-center justify-center gap-2 transition-colors"
+              style={{ backgroundColor: copied ? "#EAF5FF" : "#002060", color: copied ? "#1B90FF" : "#fff" }}>
+              {copied ? <><Check size={13} /> Copied to clipboard!</> : <>📋 Copy message</>}
+            </button>
+            <p className="text-[10px] text-center" style={{ color: "#7C8896" }}>
+              Paste into an email to <span className="font-medium">SAPnextgen@sap.com</span>
+            </p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GoodbyePage({ onContinue }) {
+  React.useEffect(() => {
+    const t = setTimeout(onContinue, 4000);
+    return () => clearTimeout(t);
+  }, []);
+
+  return (
+    <div className="flex-1 flex flex-col items-center justify-center gap-6 px-8"
+      style={{ backgroundColor: "#EAF5FF" }}>
+      <div className="w-16 h-16 rounded-full flex items-center justify-center"
+        style={{ backgroundColor: "#fff", border: "2px solid #CFE6FA", boxShadow: "0 4px 20px rgba(0,32,96,0.10)" }}>
+        <Coffee size={28} color="#002060" />
+      </div>
+      <div className="text-center space-y-2">
+        <div className="text-2xl font-semibold" style={{ color: "#002060", fontFamily: "'Fraunces', serif" }}>
+          See you around
+        </div>
+        <p className="text-sm max-w-xs leading-relaxed" style={{ color: "#7C8896" }}>
+          Your account has been deleted. All stamps, badges, and match history have been cleared.
+        </p>
+      </div>
+      <div className="text-xs" style={{ color: "#AAB8C8" }}>Redirecting to sign up…</div>
+    </div>
+  );
+}
+
 export default function CoffeePassportApp() {
   useFonts();
 
@@ -3028,6 +3271,8 @@ export default function CoffeePassportApp() {
   const [notifications, setNotifications] = useState([]);
   const [celebrating, setCelebrating] = useState(false);
   const [ssoUser, setSsoUser] = useState(null);
+  const [showTutorial, setShowTutorial] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
 
   // ── Demo state (in-memory fallback, used when backend unavailable) ───────────
   const [demoUsers, setDemoUsers] = useState(demoState.users);
@@ -3086,18 +3331,37 @@ export default function CoffeePassportApp() {
       .then(state => {
         if (!state) return; // backend not reachable — stay in demo mode
         setBackendAvailable(true);
-        if (state.user) {
+        if (state.user && !state.user.deleted) {
           const u = normalizeUser(state.user);
           setLiveUser(u);
           setCurrentUserId(u.email);
           setSignedUpIds(prev => new Set([...prev, u.email]));
           setView("dashboard"); // returning user — skip landing/signup
         }
+        // deleted user → liveUser stays null, view stays signup
         setLiveMatches(state.matches || []);
         setLivePeers((state.peers || []).map(normalizeUser));
       })
       .catch(() => setBackendAvailable(false));
   }, [ssoUser?.email]);
+
+  // ── Background polling — refresh state every 30s so incoming matches appear ──
+  React.useEffect(() => {
+    if (!backendAvailable || !ssoUser?.email) return;
+    const id = setInterval(() => {
+      API.getMyState()
+        .then(state => {
+          if (!state) return;
+          if (state.user && !state.user.deleted) {
+            setLiveUser(normalizeUser(state.user));
+          }
+          setLiveMatches(state.matches || []);
+          setLivePeers((state.peers || []).map(normalizeUser));
+        })
+        .catch(() => {});
+    }, 30000);
+    return () => clearInterval(id);
+  }, [backendAvailable, ssoUser?.email]);
 
   // ── SSO login handler ────────────────────────────────────────────────────────
   function handleSSOLogin() {
@@ -3270,10 +3534,9 @@ export default function CoffeePassportApp() {
   async function handleDelete() {
     if (backendAvailable) {
       await API.deleteUser().catch(() => {});
-      setLiveUser(u => u ? { ...u, deleted: true, name: "SAP Next Gen Member", optedIn: false } : u);
-      setLiveMatches(m => m.map(x =>
-        ["active", "pending_confirmation"].includes(x.status) ? { ...x, status: "expired" } : x
-      ));
+      setLiveUser(null);
+      setLiveMatches([]);
+      setLivePeers([]);
     } else {
       setDemoUsers(users => users.map(u => u.id === currentUserId
         ? { ...u, deleted: true, name: "SAP Next Gen Member", optedIn: false } : u));
@@ -3283,7 +3546,10 @@ export default function CoffeePassportApp() {
           ? { ...m, status: "expired" } : m
       ));
     }
-    setView("dashboard");
+    setSignedUpIds(new Set());
+    setCurrentUserId(null);
+    localStorage.removeItem("cp-tutorial-done");
+    setView("goodbye");
   }
 
   return (
@@ -3299,7 +3565,7 @@ export default function CoffeePassportApp() {
       )}
 
       {/* Top bar */}
-      <div className="flex items-center justify-between px-4 py-2.5 border-b shrink-0"
+      <div className="flex items-center justify-between px-6 py-2.5 border-b shrink-0"
         style={{ backgroundColor: "#002060", borderColor: "#001642" }}>
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
@@ -3328,7 +3594,11 @@ export default function CoffeePassportApp() {
         </div>
         )}
         <div className="flex items-center gap-2">
-          {/* Show signed-in user name when logged in */}
+          {/* Feedback button — always visible when logged in */}
+          {ssoUser && (
+            <FeedbackButton open={feedbackOpen} onToggle={() => setFeedbackOpen(v => !v)} />
+          )}
+          {/* User name in nav */}
           {ssoUser && (
             <span className="text-xs rounded-full px-3 py-1.5"
               style={{ backgroundColor: "#0A3D8F", color: "#D1EFFF" }}>
@@ -3349,6 +3619,11 @@ export default function CoffeePassportApp() {
       {/* Content area */}
       <div className="flex-1 overflow-hidden flex flex-col"
         style={{ display: "grid", gridTemplateRows: "1fr" }}>
+
+        {/* Goodbye page — shown after account deletion */}
+        {view === "goodbye" && (
+          <GoodbyePage onContinue={() => setView("signup")} />
+        )}
 
         {/* Landing page */}
         {view === "landing" && !isAdmin && (
@@ -3413,6 +3688,11 @@ export default function CoffeePassportApp() {
                 }
               }
               setView("dashboard");
+              // Show tutorial on first signup (not on profile edits)
+              if (!hasSignedUp) {
+                localStorage.removeItem("cp-tutorial-done");
+                setShowTutorial(true);
+              }
             }}
           />
         )}
@@ -3421,22 +3701,117 @@ export default function CoffeePassportApp() {
           <PassportPage user={currentUser} />
         )}
 
-        {/* Dashboard 3-panel grid */}
+        {/* Dashboard 2-panel grid */}
         {view === "dashboard" && !isAdmin && (
-          <div className="flex-1 overflow-hidden grid" style={{ gridTemplateColumns: "280px 1fr 300px" }}>
-            <div className="border-r overflow-hidden" style={{ borderColor: "#CFE6FA", backgroundColor: "#F5FAFF" }}>
-              <PassportPanel user={currentUser} />
+          <div className="flex-1 overflow-hidden flex flex-col">
+
+            {/* User identity + progress strip */}
+            {currentUser && (
+              <div className="shrink-0 px-6 py-4 border-b flex items-center gap-6"
+                style={{ backgroundColor: "#fff", borderColor: "#CFE6FA" }}>
+                <div className="flex items-center gap-3">
+                  <Avatar name={currentUser.name} email={currentUser.email} size={44} />
+                  <div>
+                    <div className="font-semibold text-sm" style={{ color: "#002060", fontFamily: "'Fraunces', serif" }}>
+                      {currentUser.name}
+                    </div>
+                    <div className="text-xs" style={{ color: "#7C8896" }}>
+                      {currentUser.role} · {currentUser.office}
+                    </div>
+                  </div>
+                </div>
+                <div className="h-8 w-px mx-2" style={{ backgroundColor: "#EAF5FF" }} />
+                <div className="flex items-center gap-3">
+                  {[
+                    { label: "Chats completed", value: currentUser.chatsCompleted || 0, color: "#1B90FF" },
+                    { label: "Regions collected", value: `${Object.keys(currentUser.collectedRegions || {}).length} / 4`, color: "#DF1278" },
+                    { label: "Offices collected", value: Object.keys(currentUser.collectedOffices || {}).length, color: "#002060" },
+                    { label: "Badges earned", value: (Array.isArray(currentUser.badges) ? currentUser.badges : []).length, color: "#7C3AED" },
+                  ].map(s => (
+                    <div key={s.label} className="flex flex-col items-center justify-center rounded-xl px-5 py-2.5"
+                      style={{ backgroundColor: "#F5FAFF", border: "1px solid #EAF5FF", minWidth: 90 }}>
+                      <span className="text-xl font-semibold leading-none"
+                        style={{ color: s.color, fontFamily: "'Fraunces', serif" }}>{s.value}</span>
+                      <span className="text-[10px] mt-1 text-center leading-tight" style={{ color: "#7C8896" }}>{s.label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Two panels */}
+            <div className="flex-1 overflow-hidden grid" style={{ gridTemplateColumns: "1fr 420px" }}>
+              <div className="border-r overflow-hidden flex flex-col bg-white" style={{ borderColor: "#CFE6FA" }}>
+                <div className="flex-shrink-0 overflow-hidden" style={{ minHeight: 0, flex: "0 1 auto", maxHeight: "calc(100% - 120px)" }}>
+                  <MatchPanel
+                    users={matcherUsers} matches={activeMatches} currentUser={currentUser}
+                    onAccept={handleAccept} onReshuffle={handleReshuffle}
+                    reshufflesLeft={reshufflesLeft} matchesLeft={matchesLeft}
+                  />
+                </div>
+
+                {/* Recent Chats placeholder */}
+                {(() => {
+                  const completed = activeMatches.filter(m =>
+                    (m.userAId === currentUser?.id || m.userBId === currentUser?.id) &&
+                    m.status === "completed"
+                  );
+                  const usersById = Object.fromEntries(matcherUsers.map(u => [u.id, u]));
+                  return (
+                    <div className="shrink-0 border-t px-7 py-4" style={{ borderColor: "#EAF5FF" }}>
+                      <div className="flex items-center gap-2 mb-3">
+                        <Coffee size={13} color="#1B90FF" />
+                        <span className="text-[10px] font-semibold uppercase tracking-[0.16em]"
+                          style={{ color: "#002060", fontFamily: "'IBM Plex Mono', monospace" }}>
+                          Recent Chats
+                        </span>
+                        {completed.length > 0 && (
+                          <span className="text-[10px] text-[#7C8896]">({completed.length})</span>
+                        )}
+                      </div>
+                      {completed.length === 0 ? (
+                        <div className="flex items-center gap-3 px-4 py-3 rounded-xl"
+                          style={{ backgroundColor: "#F5FAFF", border: "1.5px dashed #CFE6FA" }}>
+                          <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0"
+                            style={{ backgroundColor: "#EAF5FF" }}>
+                            <Coffee size={14} color="#7C8896" />
+                          </div>
+                          <p className="text-xs" style={{ color: "#7C8896" }}>
+                            Completed chats will appear here after both people confirm.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="flex gap-2 overflow-x-auto pb-1">
+                          {completed.slice(0, 5).map(m => {
+                            const otherId = m.userAId === currentUser.id ? m.userBId : m.userAId;
+                            const other = usersById[otherId];
+                            if (!other) return null;
+                            return (
+                              <div key={m.id} className="shrink-0 flex flex-col items-center gap-1.5 px-3 py-2.5 rounded-xl"
+                                style={{ backgroundColor: "#F5FAFF", border: "1px solid #EAF5FF", minWidth: 72 }}>
+                                <Avatar name={other.name} email={other.email} size={32} />
+                                <span className="text-[9px] font-medium text-center leading-tight"
+                                  style={{ color: "#002060", maxWidth: 64 }}>
+                                  {other.name.split(" ")[0]}
+                                </span>
+                                <span className="text-[9px] px-1.5 py-0.5 rounded-full"
+                                  style={{ backgroundColor: "#D1EFFF", color: "#002060" }}>
+                                  {other.region}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+              <div className="overflow-hidden border-l" style={{ backgroundColor: "#fff", borderColor: "#CFE6FA" }}>
+                <MatchesPanel matches={activeMatches} users={matcherUsers} currentUser={currentUser} onConfirm={handleConfirm} onRemove={handleRemove} onAcknowledge={handleAcknowledge} />
+              </div>
             </div>
-            <div className="border-r overflow-hidden bg-white" style={{ borderColor: "#CFE6FA" }}>
-              <MatchPanel
-                users={matcherUsers} matches={activeMatches} currentUser={currentUser}
-                onAccept={handleAccept} onReshuffle={handleReshuffle}
-                reshufflesLeft={reshufflesLeft} matchesLeft={matchesLeft}
-              />
-            </div>
-            <div className="overflow-hidden" style={{ backgroundColor: "#F5FAFF" }}>
-              <MatchesPanel matches={activeMatches} users={matcherUsers} currentUser={currentUser} onConfirm={handleConfirm} onRemove={handleRemove} onAcknowledge={handleAcknowledge} />
-            </div>
+
           </div>
         )}
 
@@ -3446,6 +3821,11 @@ export default function CoffeePassportApp() {
           </div>
         )}
       </div>
+
+      {/* Tutorial overlay — shown on first login */}
+      {showTutorial && (
+        <TutorialOverlay onClose={() => setShowTutorial(false)} />
+      )}
     </div>
   );
 }
