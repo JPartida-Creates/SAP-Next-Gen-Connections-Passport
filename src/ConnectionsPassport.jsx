@@ -60,6 +60,7 @@ const API = {
   pauseUser:       ()           => API._call("pauseUser"),
   deleteUser:      ()           => API._call("deleteUser"),
   adminResetShuffles: (email)   => API._call("adminResetShuffles", { email }),
+  adminSetActive:     (email)   => API._call("adminSetActive",     { email }),
 };
 
 /* Normalize a user row from the CAP API into the shape the UI expects.
@@ -2708,7 +2709,7 @@ function LandingPage({ onJoin, ssoUser }) {
 
 
 
-function AdminPanel({ users, matches, onResetShuffles }) {
+function AdminPanel({ users, matches, onResetShuffles, onSetActive }) {
   const optedIn = users.filter(u => u.optedIn).length;
   const completed = matches.filter(m => m.status === "completed").length;
   const active = matches.filter(m => m.status === "active").length;
@@ -2826,6 +2827,14 @@ function AdminPanel({ users, matches, onResetShuffles }) {
                         {u.deleted ? <span style={{ color: "#7C8896" }}>Deleted</span>
                           : u.paused ? <span style={{ color: "#DF1278" }}>Paused</span>
                           : <span style={{ color: "#1B90FF" }}>Active</span>}
+                        {(u.deleted || u.paused || !u.optedIn) && (
+                          <button
+                            onClick={() => onSetActive && onSetActive(u.id)}
+                            className="ml-2 text-[10px] font-medium rounded-full px-2 py-0.5 transition-colors"
+                            style={{ backgroundColor: "#E6F9F0", color: "#1A7F4B", border: "1px solid #A8E6C8" }}>
+                            Set active
+                          </button>
+                        )}
                       </td>
                       <td className="px-3 py-2 font-mono text-[#445063]">{shufflesLeft} / 3</td>
                       <td className="px-3 py-2">
@@ -3936,6 +3945,19 @@ export default function CoffeePassportApp() {
     setView("goodbye");
   }
 
+  async function handleAdminSetActive(email) {
+    if (backendAvailable) {
+      await API.adminSetActive(email).catch(() => {});
+      setLivePeers(peers => peers.map(u =>
+        u.email === email ? { ...u, optedIn: true, paused: false, deleted: false } : u
+      ));
+    } else {
+      setDemoUsers(users => users.map(u =>
+        u.id === email ? { ...u, optedIn: true, paused: false, deleted: false } : u
+      ));
+    }
+  }
+
   async function handleAdminResetShuffles(email) {
     if (backendAvailable) {
       await API.adminResetShuffles(email).catch(() => {});
@@ -4252,7 +4274,7 @@ export default function CoffeePassportApp() {
               ))}
             </div>
             <div className="flex-1 overflow-hidden">
-              {adminTab === "dashboard" && <AdminPanel users={matcherUsers} matches={activeMatches} onResetShuffles={handleAdminResetShuffles} />}
+              {adminTab === "dashboard" && <AdminPanel users={matcherUsers} matches={activeMatches} onResetShuffles={handleAdminResetShuffles} onSetActive={handleAdminSetActive} />}
               {adminTab === "demo"      && <DemoMode onExit={() => setAdminTab("dashboard")} seedUsers={demoState.users} />}
             </div>
           </div>
