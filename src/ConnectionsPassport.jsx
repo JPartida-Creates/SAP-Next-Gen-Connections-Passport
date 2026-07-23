@@ -427,107 +427,6 @@ function getTimezone(office, country) {
   return OFFICE_TIMEZONES[office] || TIMEZONES[country] || "UTC+0";
 }
 
-const COUNTRY_IANA = {
-  "Germany": "Europe/Berlin", "Ireland": "Europe/Dublin",
-  "United Kingdom": "Europe/London", "France": "Europe/Paris",
-  "India": "Asia/Kolkata", "Singapore": "Asia/Singapore",
-  "Japan": "Asia/Tokyo", "Australia": "Australia/Sydney",
-  "United States": "America/New_York", "Canada": "America/Toronto",
-  "Brazil": "America/Sao_Paulo", "UAE": "Asia/Dubai",
-  "Saudi Arabia": "Asia/Riyadh", "South Africa": "Africa/Johannesburg",
-  "Netherlands": "Europe/Amsterdam", "Spain": "Europe/Madrid",
-  "Italy": "Europe/Rome", "Switzerland": "Europe/Zurich",
-  "Sweden": "Europe/Stockholm", "Denmark": "Europe/Copenhagen",
-  "Poland": "Europe/Warsaw", "Austria": "Europe/Vienna",
-  "Belgium": "Europe/Brussels", "Portugal": "Europe/Lisbon",
-  "Czech Republic": "Europe/Prague", "Hungary": "Europe/Budapest",
-  "Romania": "Europe/Bucharest", "Finland": "Europe/Helsinki",
-  "Norway": "Europe/Oslo", "Turkey": "Europe/Istanbul",
-  "Israel": "Asia/Jerusalem", "Egypt": "Africa/Cairo",
-  "Nigeria": "Africa/Lagos", "Kenya": "Africa/Nairobi",
-  "China": "Asia/Shanghai", "South Korea": "Asia/Seoul",
-  "Malaysia": "Asia/Kuala_Lumpur", "Philippines": "Asia/Manila",
-  "Thailand": "Asia/Bangkok", "Vietnam": "Asia/Ho_Chi_Minh",
-  "New Zealand": "Pacific/Auckland", "Indonesia": "Asia/Jakarta",
-  "Mexico": "America/Mexico_City", "Colombia": "America/Bogota",
-  "Argentina": "America/Argentina/Buenos_Aires", "Chile": "America/Santiago",
-  "Qatar": "Asia/Qatar", "Kuwait": "Asia/Kuwait", "Bahrain": "Asia/Bahrain",
-  "Peru": "America/Lima", "Ecuador": "America/Guayaquil", "Venezuela": "America/Caracas",
-  "Costa Rica": "America/Costa_Rica", "Panama": "America/Panama",
-  "Puerto Rico": "America/Puerto_Rico",
-  "Hong Kong": "Asia/Hong_Kong", "Taiwan": "Asia/Taipei",
-  "Angola": "Africa/Luanda", "Morocco": "Africa/Casablanca",
-  "Pakistan": "Asia/Karachi", "Oman": "Asia/Muscat", "Iraq": "Asia/Baghdad",
-  "Azerbaijan": "Asia/Baku", "Kazakhstan": "Asia/Almaty",
-  "Ukraine": "Europe/Kiev", "Serbia": "Europe/Belgrade", "Croatia": "Europe/Zagreb",
-  "Slovenia": "Europe/Ljubljana", "Slovakia": "Europe/Bratislava",
-  "Bulgaria": "Europe/Sofia", "Cyprus": "Asia/Nicosia",
-  "Estonia": "Europe/Tallinn", "Latvia": "Europe/Riga", "Lithuania": "Europe/Vilnius",
-  "Luxembourg": "Europe/Luxembourg", "Russia": "Europe/Moscow",
-};
-
-const OFFICE_IANA = {
-  // Pacific
-  "Palo Alto":       "America/Los_Angeles", "San Francisco":  "America/Los_Angeles",
-  "San Ramon":       "America/Los_Angeles", "San Diego":      "America/Los_Angeles",
-  "Newport Beach":   "America/Los_Angeles", "Bellevue":       "America/Los_Angeles",
-  "Vancouver":       "America/Vancouver",
-  // Mountain
-  "Tempe":           "America/Phoenix",     "Colorado Springs": "America/Denver",
-  // Central
-  "Chicago":         "America/Chicago",     "Houston":        "America/Chicago",
-  "Austin":          "America/Chicago",     "St Louis":       "America/Chicago",
-  "Minneapolis":     "America/Chicago",     "La Crosse":      "America/Chicago",
-  "Monterrey":       "America/Monterrey",   "Mexico City":    "America/Mexico_City",
-  // Eastern
-  "New York":        "America/New_York",    "Boston":         "America/New_York",
-  "Atlanta":         "America/New_York",    "Alpharetta":     "America/New_York",
-  "Washington D.C.": "America/New_York",    "Newtown Square": "America/New_York",
-  "Reston":          "America/New_York",    "Pittsburgh":     "America/New_York",
-  "Raleigh":         "America/New_York",    "Cincinnati":     "America/New_York",
-  "Indianapolis":    "America/Indiana/Indianapolis", "Birmingham": "America/New_York",
-  "Miami":           "America/New_York",    "Lake Mary":      "America/New_York",
-  "Toronto":         "America/Toronto",     "Montreal":       "America/Toronto",
-  "Ottawa":          "America/Toronto",
-  // Canada other
-  "Calgary":         "America/Edmonton",    "Waterloo":       "America/Toronto",
-  // Other overrides
-  "Ho Chi Minh City": "Asia/Ho_Chi_Minh",
-  "Melbourne":       "Australia/Melbourne", "Auckland":       "Pacific/Auckland",
-  "Wellington":      "Pacific/Auckland",    "San Juan":       "America/Puerto_Rico",
-  "Osaka":           "Asia/Tokyo",          "Nagoya":         "Asia/Tokyo",
-  "Oita":            "Asia/Tokyo",
-};
-function getIANA(office, country) {
-  return OFFICE_IANA[office] || COUNTRY_IANA[country] || "UTC";
-}
-
-// Get current UTC offset in hours for an IANA timezone (accounts for DST)
-function getCurrentOffset(iana) {
-  const now = new Date();
-  const utcStr = now.toLocaleString("en-US", { timeZone: "UTC" });
-  const localStr = now.toLocaleString("en-US", { timeZone: iana });
-  return (new Date(localStr) - new Date(utcStr)) / 3600000;
-}
-
-// Format current time in an IANA timezone
-function fmtTimeInTz(iana) {
-  return new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", timeZone: iana });
-}
-
-// Returns 24-slot overlap grid using current DST-aware offsets
-function getOverlapGrid(iana1, iana2) {
-  const off1 = getCurrentOffset(iana1);
-  const off2 = getCurrentOffset(iana2);
-  return Array.from({ length: 24 }, (_, utcHour) => {
-    const h1 = ((utcHour + off1) % 24 + 24) % 24;
-    const h2 = ((utcHour + off2) % 24 + 24) % 24;
-    const a1 = h1 >= 9 && h1 < 17;
-    const a2 = h2 >= 9 && h2 < 17;
-    return { a1, a2, both: a1 && a2 };
-  });
-}
-
 const INTEREST_CATEGORIES = [
   {
     label: "Tech & Innovation",
@@ -1334,35 +1233,31 @@ function MatchPanel({ users, matches, currentUser, onAccept, onReshuffle, reshuf
               </div>
             ) : (
               <div key={spinKey} className={spinning ? "" : "slot-card-enter"}>
-                <div className="p-4 relative overflow-hidden">
-                  <div className="flex items-start gap-3 mb-3 relative">
-                    <Avatar name={suggestion.name} email={suggestion.email} size={48} />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex flex-wrap items-center gap-1.5 mb-0.5">
-                        <span className="font-semibold text-sm" style={{ color: "#002060", fontFamily: "'72Brand', sans-serif" }}>
-                          {displayName(suggestion)}
-                        </span>
+                <div className="p-4 relative overflow-hidden flex flex-col items-center text-center gap-3">
+                  <Avatar name={suggestion.name} email={suggestion.email} size={56} />
+                  <div className="w-full">
+                    <div className="font-semibold text-sm mb-0.5" style={{ color: "#002060", fontFamily: "'72Brand', sans-serif" }}>
+                      {displayName(suggestion)}
+                    </div>
+                    <div className="text-xs text-[#5A6472] mb-2">{suggestion.role}</div>
+                    <div className="flex flex-col items-center gap-1">
+                      <div className="flex items-center gap-1.5 text-xs text-[#5A6472]">
+                        <MapPin size={11} />
+                        {suggestion.office}, {suggestion.country}
+                        <span className="text-base leading-none">{COUNTRY_EMOJI[suggestion.country] || ""}</span>
                       </div>
-                      <div className="text-xs text-[#5A6472] mb-2">{suggestion.role}</div>
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-1.5 text-xs text-[#5A6472]">
-                          <MapPin size={11} />
-                          {suggestion.office}, {suggestion.country}
-                          <span className="text-base leading-none">{COUNTRY_EMOJI[suggestion.country] || ""}</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 text-xs">
-                          <Globe2 size={11} color="#5A6472" />
-                          <span className="rounded-full px-2 py-0.5 text-xs font-medium"
-                            style={{ backgroundColor: REGION_COLOR[suggestion.region]?.bg, color: REGION_COLOR[suggestion.region]?.text }}>
-                            {suggestion.region}
-                          </span>
-                          <Clock size={11} color="#5A6472" />
-                          <span className="text-xs text-[#5A6472]">{suggestion.timezone}</span>
-                        </div>
+                      <div className="flex items-center gap-1.5 text-xs">
+                        <Globe2 size={11} color="#5A6472" />
+                        <span className="rounded-full px-2 py-0.5 text-xs font-medium"
+                          style={{ backgroundColor: REGION_COLOR[suggestion.region]?.bg, color: REGION_COLOR[suggestion.region]?.text }}>
+                          {suggestion.region}
+                        </span>
+                        <Clock size={11} color="#5A6472" />
+                        <span className="text-xs text-[#5A6472]">{suggestion.timezone}</span>
                       </div>
                     </div>
                   </div>
-                  <div className="flex flex-wrap gap-1 mb-2 relative">
+                  <div className="flex flex-wrap justify-center gap-1">
                     {newRegion && <Pill color="#DF1278">✦ New region</Pill>}
                     {newOffice  && <Pill color="#1B90FF">✦ New office</Pill>}
                     {suggestion.interests.slice(0, 3).map(i => (
@@ -1370,6 +1265,16 @@ function MatchPanel({ users, matches, currentUser, onAccept, onReshuffle, reshuf
                         style={{ backgroundColor: "#D1EFFF", color: "#002060" }}>{i}</span>
                     ))}
                   </div>
+                  {Array.isArray(suggestion.badges) && suggestion.badges.length > 0 && (
+                    <div className="flex flex-wrap justify-center gap-1">
+                      {suggestion.badges.map(b => (
+                        <span key={b} className="text-[10px] rounded-full px-2 py-0.5 font-medium"
+                          style={{ backgroundColor: "#FFF0F7", color: "#DF1278", border: "1px solid #FFB3D1" }}>
+                          🏅 {b}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -1379,9 +1284,10 @@ function MatchPanel({ users, matches, currentUser, onAccept, onReshuffle, reshuf
           {!limitReached && (
             <div className="flex items-center justify-between px-4 pb-4 gap-3">
               <button
-                onClick={handleAccept}
-                disabled={!suggestion || spinning}
-                className="flex-1 flex items-center justify-center gap-2 rounded-xl py-3 font-semibold text-sm transition-all active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed"
+                  onClick={handleAccept}
+                  disabled={!suggestion || spinning}
+                  id="tutorial-accept-btn"
+                  className="flex-1 flex items-center justify-center gap-2 rounded-xl py-3 font-semibold text-sm transition-all active:scale-[0.97] disabled:opacity-40 disabled:cursor-not-allowed"
                 style={{ backgroundColor: "#1B90FF", color: "#fff", boxShadow: "0 2px 8px rgba(27,144,255,0.3)" }}>
                 <Check size={15} /> Accept match
               </button>
@@ -1391,6 +1297,7 @@ function MatchPanel({ users, matches, currentUser, onAccept, onReshuffle, reshuf
                 <button
                   onClick={handleReshuffle}
                   disabled={spinning}
+                  id="tutorial-spin-btn"
                   className={`relative flex items-center justify-center rounded-full transition-all disabled:cursor-not-allowed ${leverActive ? "spin-btn-go" : leverShaking ? "spin-btn-shake" : reshufflesLeft > 0 ? "spin-btn-pulse" : ""}`}
                   title={reshufflesLeft > 0 ? "Spin for a new match" : "No spins left"}
                   style={{
@@ -1427,7 +1334,6 @@ function MatchPanel({ users, matches, currentUser, onAccept, onReshuffle, reshuf
 function MatchesPanel({ matches, users, currentUser, onConfirm, onRemove, onAcknowledge }) {
   const [confirmRemoveId, setConfirmRemoveId] = useState(null);
   const [infoOpenId, setInfoOpenId] = useState(null);
-  const [tzOpenId, setTzOpenId] = useState(null);
   const usersById = Object.fromEntries(users.map(u => [u.id, u]));
 
   // Matches expiring within 2 days that haven't been confirmed
@@ -1441,35 +1347,49 @@ function MatchesPanel({ matches, users, currentUser, onConfirm, onRemove, onAckn
     const myName = displayName(currentUser);
     const theirName = displayName(other);
     const subject = `☕ Coffee Chat: ${myName} × ${theirName} | SAP Next Gen Connections Passport`;
-    const teamsLink = `https://teams.microsoft.com/l/meeting/new?subject=${encodeURIComponent(subject)}&attendees=${encodeURIComponent(other.email || other.name)}`;
+    const appUrl = "https://sap-academy-sapacademy-cf-nextgen-space-connections-pas540e9191.cfapps.us10.hana.ondemand.com";
     const body = `Hi ${theirName.split(" ")[0]},
 
-I'd love to connect for a quick coffee chat as part of the SAP Next Gen Connections Passport program! 🌍
+I'd love to connect for a 30-minute coffee chat as part of the SAP Next Gen Connections Passport program! 🌍
 
 📋 Suggested agenda (30 min):
   • Quick intros — role, office, what you're working on
-  • ${icebreaker?.prompt || "Share something about your experience at SAP so far"}
-  • Wrap up & swap any tips or resources
+  • Open conversation — tips, resources, what you're excited about at SAP
+  • Wrap up & swap any useful contacts or resources
 
-📍 Location: Microsoft Teams (link below)
+📍 Location: Microsoft Teams
 ⏱ Duration: 30 minutes
-🌐 Your timezone: ${other.timezone} | Mine: ${currentUser.timezone || "—"}
 
-Once we've had our chat, please remember to confirm in the Connections Passport app so we both earn our stamps! 🎖️
+---
+🎖️ After our chat, please open the Connections Passport app and click "We met" on this match — both of us need to confirm to earn our passport stamps!
+
+🔗 App: ${appUrl}
 
 Looking forward to connecting,
 ${myName}
+SAP Next Gen Connections Passport`;
 
-—
-🔗 Book via Teams: ${teamsLink}
-📌 Program: SAP Next Gen Connections Passport`;
-
+    const teamsLink = `https://teams.microsoft.com/l/meeting/new?subject=${encodeURIComponent(subject)}&attendees=${encodeURIComponent(other.email || other.name)}&body=${encodeURIComponent(body)}`;
     return { subject, body, teamsLink };
   }
 
-  const myMatches = matches.filter(m =>
-    (m.userAId === currentUser.id || m.userBId === currentUser.id) && !m.removed
-  );
+  const STATUS_RANK = { completed: 4, pending_confirmation: 3, active: 2, expired: 1 };
+
+  const myMatches = (() => {
+    const raw = matches.filter(m =>
+      (m.userAId === currentUser.id || m.userBId === currentUser.id) && !m.removed
+    );
+    // Deduplicate by other-person ID: keep the match with the highest status rank
+    const best = new Map();
+    for (const m of raw) {
+      const otherId = m.userAId === currentUser.id ? m.userBId : m.userAId;
+      const prev = best.get(otherId);
+      if (!prev || (STATUS_RANK[m.status] || 0) > (STATUS_RANK[prev.status] || 0)) {
+        best.set(otherId, m);
+      }
+    }
+    return Array.from(best.values());
+  })();
 
   const groups = [
     { key: "active",               label: "Active",    color: "#1B90FF" },
@@ -1487,20 +1407,7 @@ ${myName}
     const isRemoving = confirmRemoveId === m.id;
     const showingInfo = infoOpenId === m.id;
     const infoRef = React.useRef(null);
-    const [copied, setCopied] = useState(false);
-    const [showInvite, setShowInvite] = useState(false);
-    const [notesOpen, setNotesOpen] = useState(false);
-    const [noteText, setNoteText] = useState("");
     const isUrgent = m.status === "active" && daysLeft <= 2;
-    const tzOpen = tzOpenId === m.id;
-
-    // Timezone data — DST-aware via IANA names
-    const myIANA = getIANA(currentUser.office, currentUser.country);
-    const theirIANA = getIANA(other.office, other.country);
-    const overlapGrid = getOverlapGrid(myIANA, theirIANA);
-    const overlapHours = overlapGrid.filter(h => h.both).length;
-    const myTimeStr = fmtTimeInTz(myIANA);
-    const theirTimeStr = fmtTimeInTz(theirIANA);
 
     return (
       <div className="mx-3 mb-2 rounded-2xl overflow-hidden"
@@ -1590,195 +1497,20 @@ ${myName}
           </div>
         )}
 
-        {/* Timezone + invite chips row — active matches only */}
+        {/* Schedule button — active matches only */}
         {m.status === "active" && (
           <div className="mx-4 mb-2 flex flex-wrap gap-2">
             <button
-              onClick={() => setTzOpenId(tzOpen ? null : m.id)}
+              onClick={() => window.open(generateInvite(m, other, null).teamsLink, "_blank")}
               className="flex items-center gap-1.5 text-[10px] font-medium rounded-full px-2.5 py-1 transition-colors"
-              style={{
-                backgroundColor: tzOpen ? "#002060" : "#F5FAFF",
-                color: tzOpen ? "#fff" : "#445063",
-                border: "1px solid #CFE6FA",
-              }}>
-              🕐 {overlapHours > 0 ? `${overlapHours}h friendly hours` : "No overlap"}
+              style={{ backgroundColor: "#5059C9", color: "#fff", border: "1px solid #3B4AB8" }}>
+              📅 Schedule in Teams
             </button>
-            {!showInvite && (
-              <button
-                onClick={() => setShowInvite(true)}
-                className="flex items-center gap-1.5 text-[10px] font-medium rounded-full px-2.5 py-1 transition-colors"
-                style={{ backgroundColor: "#F5FAFF", color: "#445063", border: "1px solid #CFE6FA" }}>
-                📅 Copy meeting invite
-              </button>
-            )}
           </div>
         )}
 
-        {/* Timezone overlap panel */}
-        {m.status === "active" && tzOpen && (
-          <div className="mx-4 mb-3 rounded-xl p-3 space-y-3"
-            style={{ backgroundColor: "#F5FAFF", border: "1px solid #CFE6FA" }}>
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-semibold uppercase tracking-widest text-[#445063]"
-                style={{ fontFamily: "'72Brand', sans-serif" }}>
-                Timezone overlap
-              </span>
-              <button onClick={() => setTzOpenId(null)} style={{ color: "#7C8896" }}><X size={11} /></button>
-            </div>
 
-            {/* Current times */}
-            <div className="grid grid-cols-2 gap-2">
-              {[
-                { label: "You", name: currentUser.name.split(" ")[0], tz: myIANA.split("/")[1]?.replace(/_/g," ") || myIANA, timeStr: myTimeStr, color: "#1B90FF" },
-                { label: other.name.split(" ")[0], name: other.office, tz: theirIANA.split("/")[1]?.replace(/_/g," ") || theirIANA, timeStr: theirTimeStr, color: "#DF1278" },
-              ].map(p => (
-                <div key={p.label} className="rounded-lg p-2.5 text-center"
-                  style={{ backgroundColor: "#fff", border: `1px solid ${p.color}22` }}>
-                  <div className="text-[9px] text-[#7C8896] mb-0.5">{p.label} · {p.name}</div>
-                  <div className="text-base font-semibold" style={{ color: p.color, fontFamily: "'72Brand', sans-serif" }}>
-                    {p.timeStr}
-                  </div>
-                  <div className="text-[9px] text-[#7C8896] mt-0.5">{p.tz}</div>
-                </div>
-              ))}
-            </div>
-
-            {/* 24-hour overlap grid */}
-            <div>
-              <div className="text-[9px] text-[#7C8896] mb-1.5">
-                {overlapHours > 0
-                  ? `${overlapHours}h of friendly hours overlap (9–5 local time for both)`
-                  : "No friendly hours overlap — consider an early/late slot or async"}
-              </div>
-              <div className="flex gap-px rounded overflow-hidden" style={{ height: 14 }}>
-                {overlapGrid.map((h, i) => (
-                  <div key={i} className="flex-1" title={`${i}:00 UTC`}
-                    style={{
-                      backgroundColor: h.both ? "#1B90FF"
-                        : h.a1 ? "#89D1FF"
-                        : h.a2 ? "#FFB3D1"
-                        : "#EAF5FF",
-                    }} />
-                ))}
-              </div>
-              <div className="flex justify-between text-[8px] text-[#7C8896] mt-0.5">
-                <span>0:00 UTC</span><span>12:00</span><span>23:00</span>
-              </div>
-              <div className="flex items-center gap-3 mt-2 flex-wrap">
-                {[
-                  { color: "#1B90FF", label: "Ideal time (both)" },
-                  { color: "#89D1FF", label: "Your friendly hours" },
-                  { color: "#FFB3D1", label: `${displayName(other).split(" ")[0]}'s friendly hours` },
-                  { color: "#EAF5FF", label: "Outside friendly hours", border: true },
-                ].map(s => (
-                  <div key={s.label} className="flex items-center gap-1">
-                    <div className="w-2.5 h-2.5 rounded-sm shrink-0"
-                      style={{ backgroundColor: s.color, border: s.border ? "1px solid #CFE6FA" : "none" }} />
-                    <span className="text-[8px] text-[#7C8896]">{s.label}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Meeting invite section — active matches only */}
-        {m.status === "active" && showInvite && (
-          <div className="mx-4 mb-3">
-              <div className="rounded-xl p-3 space-y-2.5"
-                style={{ backgroundColor: "#F5FAFF", border: "1px solid #CFE6FA" }}>
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-semibold uppercase tracking-widest text-[#445063]"
-                    style={{ fontFamily: "'72Brand', sans-serif" }}>
-                    Meeting invite
-                  </span>
-                  <button onClick={() => setShowInvite(false)} style={{ color: "#7C8896" }}><X size={11} /></button>
-                </div>
-
-                {/* Preview */}
-                <div className="rounded-lg p-2.5 text-[10px] leading-relaxed font-mono overflow-y-auto"
-                  style={{ backgroundColor: "#fff", border: "1px solid #EAF5FF", maxHeight: 120, color: "#445063", whiteSpace: "pre-wrap" }}>
-                  {`Subject: ☕ Coffee Chat: ${currentUser.name} × ${other.name} | SAP Next Gen Connections Passport\n\nHi ${other.name.split(" ")[0]}, I'd love to connect for a 30-min coffee chat via the SAP Next Gen Connections Passport! Topic: Share your SAP experience so far.  Please confirm in the app after we chat to earn our stamps! 🎖️`}
-                </div>
-
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => {
-                      const { subject, body } = generateInvite(m, other, null);
-                      navigator.clipboard.writeText(`Subject: ${subject}\n\n${body}`)
-                        .then(() => { setCopied(true); setTimeout(() => setCopied(false), 2500); })
-                        .catch(() => {});
-                    }}
-                    className="flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 text-[11px] font-semibold transition-all"
-                    style={{
-                      backgroundColor: copied ? "#EAF5FF" : "#002060",
-                      color: copied ? "#1B90FF" : "#fff",
-                    }}>
-                    {copied ? <><Check size={12} /> Copied!</> : <>📋 Copy invite</>}
-                  </button>
-                  <button
-                    onClick={() => window.open(generateInvite(m, other, null).teamsLink, "_blank")}
-                    className="flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 text-[11px] font-semibold"
-                    style={{ backgroundColor: "#5059C9", color: "#fff" }}>
-                    🟦 Open in Teams
-                  </button>
-                </div>
-                <p className="text-[9px] text-[#7C8896] text-center">
-                  After your chat, click "We met" on this match to confirm and earn your passport stamp.
-                </p>
-              </div>
-          </div>
-        )}
-
-        {/* Post-chat notes — completed matches only */}
-        {m.status === "completed" && (
-          <div className="mx-4 mb-3">
-            {!notesOpen && !noteText ? (
-              <button
-                onClick={() => setNotesOpen(true)}
-                className="flex items-center gap-1.5 text-[10px] font-medium rounded-full px-2.5 py-1"
-                style={{ backgroundColor: "#F5FAFF", color: "#445063", border: "1px solid #CFE6FA" }}>
-                📝 Add chat notes
-              </button>
-            ) : (
-              <div className="rounded-xl p-3 space-y-2"
-                style={{ backgroundColor: "#F5FAFF", border: "1px solid #CFE6FA" }}>
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-semibold uppercase tracking-widest text-[#445063]"
-                    style={{ fontFamily: "'72Brand', sans-serif" }}>
-                    📝 Your private notes
-                  </span>
-                  {noteText && !notesOpen && (
-                    <button onClick={() => setNotesOpen(true)}
-                      className="text-[10px] font-medium" style={{ color: "#1B90FF" }}>Edit</button>
-                  )}
-                  {notesOpen && (
-                    <button onClick={() => setNotesOpen(false)} style={{ color: "#7C8896" }}><X size={11} /></button>
-                  )}
-                </div>
-                {notesOpen ? (
-                  <>
-                    <textarea
-                      value={noteText}
-                      onChange={e => setNoteText(e.target.value)}
-                      placeholder={`What did you talk about with ${displayName(other).split(" ")[0]}? Any follow-up ideas or resources to share?`}
-                      className="w-full rounded-lg px-3 py-2 text-xs resize-none outline-none"
-                      style={{ backgroundColor: "#fff", border: "1px solid #EAF5FF", color: "#002060", minHeight: 80 }}
-                    />
-                    <button
-                      onClick={() => setNotesOpen(false)}
-                      className="text-[11px] font-semibold rounded-lg px-3 py-1.5"
-                      style={{ backgroundColor: "#002060", color: "#fff" }}>
-                      Save notes
-                    </button>
-                  </>
-                ) : (
-                  <p className="text-xs text-[#445063] leading-relaxed whitespace-pre-wrap">{noteText}</p>
-                )}
-              </div>
-            )}
-          </div>
-        )}
+        {/* Post-chat notes removed */}
       </div>
     );
   }
@@ -1848,26 +1580,159 @@ function PassportPage({ user }) {
   const totalStamps = regionEntries.reduce((s,[,c])=>s+c,0) + officeEntries.reduce((s,[,c])=>s+c,0);
 
   function handleShare() {
-    const regionList = regionEntries.map(([r]) => r).join(", ") || "none yet";
-    const badgeList = Array.isArray(user.badges) && user.badges.length
-      ? user.badges.join(", ") : "none yet";
-    const text =
-`☕ SAP Next Gen Connections Passport — ${displayName(user)}
-${user.role} · ${user.office}
+    const W = 800, H = 480;
+    const canvas = document.createElement("canvas");
+    canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext("2d");
 
-📊 My stats:
-  Chats completed: ${user.chatsCompleted || 0}
-  Regions collected: ${regionEntries.length}/${REGIONS.length} (${regionList})
-  Office stamps: ${officeEntries.length}
-  Badges: ${Array.isArray(user.badges) ? user.badges.length : 0}
+    // Background gradient
+    const grad = ctx.createLinearGradient(0, 0, W, H);
+    grad.addColorStop(0,   "#001642");
+    grad.addColorStop(0.55,"#002060");
+    grad.addColorStop(1,   "#0A3D8F");
+    ctx.fillStyle = grad;
+    roundRect(ctx, 0, 0, W, H, 24);
+    ctx.fill();
 
-🏅 Badges earned: ${badgeList}
+    // Subtle dot grid pattern
+    ctx.fillStyle = "rgba(255,255,255,0.03)";
+    for (let x = 20; x < W; x += 28) {
+      for (let y = 20; y < H; y += 28) {
+        ctx.beginPath(); ctx.arc(x, y, 1.5, 0, Math.PI * 2); ctx.fill();
+      }
+    }
 
-Collecting global connections at SAP Next Gen! 🌍`;
-    navigator.clipboard.writeText(text).then(() => {
-      setShareCopied(true);
-      setTimeout(() => setShareCopied(false), 2500);
-    }).catch(() => {});
+    // Left accent bar
+    const accent = ctx.createLinearGradient(0, 0, 0, H);
+    accent.addColorStop(0, "#1B90FF"); accent.addColorStop(1, "#DF1278");
+    ctx.fillStyle = accent;
+    roundRect(ctx, 0, 0, 5, H, 0); ctx.fill();
+
+    // SAP NEXT GEN label
+    ctx.fillStyle = "#89D1FF";
+    ctx.font = "bold 11px sans-serif";
+    ctx.letterSpacing = "3px";
+    ctx.fillText("SAP NEXT GEN  ·  CONNECTIONS PASSPORT", 36, 44);
+
+    // Name
+    ctx.fillStyle = "#ffffff";
+    ctx.font = "bold 32px sans-serif";
+    ctx.fillText(displayName(user), 36, 88);
+
+    // Role · Office
+    ctx.fillStyle = "rgba(255,255,255,0.7)";
+    ctx.font = "15px sans-serif";
+    ctx.fillText(`${user.role}  ·  ${user.office}`, 36, 114);
+
+    // Divider
+    ctx.strokeStyle = "rgba(255,255,255,0.1)";
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(36, 132); ctx.lineTo(W - 36, 132); ctx.stroke();
+
+    // Stats row
+    const stats = [
+      { label: "Chats", value: String(user.chatsCompleted || 0) },
+      { label: "Regions", value: `${regionEntries.length}/${REGIONS.length}` },
+      { label: "Offices", value: String(officeEntries.length) },
+      { label: "Badges", value: String(Array.isArray(user.badges) ? user.badges.length : 0) },
+    ];
+    const statW = (W - 72) / stats.length;
+    stats.forEach((s, i) => {
+      const x = 36 + i * statW + statW / 2;
+      ctx.fillStyle = "#1B90FF";
+      ctx.font = "bold 26px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(s.value, x, 168);
+      ctx.fillStyle = "rgba(255,255,255,0.45)";
+      ctx.font = "10px sans-serif";
+      ctx.fillText(s.label.toUpperCase(), x, 184);
+    });
+    ctx.textAlign = "left";
+
+    // Divider
+    ctx.strokeStyle = "rgba(255,255,255,0.1)";
+    ctx.beginPath(); ctx.moveTo(36, 200); ctx.lineTo(W - 36, 200); ctx.stroke();
+
+    // Region stamps row
+    const REGION_COLORS_CANVAS = { EMEA: "#1B90FF", APAC: "#DF1278", NA: "#002060", MEE: "#7C3AED" };
+    ctx.fillStyle = "rgba(255,255,255,0.35)";
+    ctx.font = "9px sans-serif";
+    ctx.fillText("REGIONS COLLECTED", 36, 222);
+
+    const allRegions = ["EMEA","APAC","NA","MEE"];
+    allRegions.forEach((r, i) => {
+      const x = 36 + i * 90;
+      const y = 230;
+      const collected = collectedRegions[r] || 0;
+      const color = collected ? REGION_COLORS_CANVAS[r] : "rgba(255,255,255,0.08)";
+      ctx.fillStyle = color;
+      roundRect(ctx, x, y, 76, 36, 8); ctx.fill();
+      ctx.fillStyle = collected ? "#fff" : "rgba(255,255,255,0.2)";
+      ctx.font = `bold 12px sans-serif`;
+      ctx.textAlign = "center";
+      ctx.fillText(r, x + 38, y + 16);
+      if (collected) {
+        ctx.fillStyle = "rgba(255,255,255,0.7)";
+        ctx.font = "9px sans-serif";
+        ctx.fillText(`${collected} stamp${collected > 1 ? "s" : ""}`, x + 38, y + 28);
+      }
+      ctx.textAlign = "left";
+    });
+
+    // Badges section
+    ctx.fillStyle = "rgba(255,255,255,0.35)";
+    ctx.font = "9px sans-serif";
+    ctx.fillText("BADGES EARNED", 36, 296);
+
+    const badges = Array.isArray(user.badges) ? user.badges : [];
+    if (badges.length === 0) {
+      ctx.fillStyle = "rgba(255,255,255,0.2)";
+      ctx.font = "11px sans-serif";
+      ctx.fillText("No badges yet — complete your first chat to earn one!", 36, 318);
+    } else {
+      let bx = 36, by = 304;
+      badges.slice(0, 8).forEach(b => {
+        const label = `🏅 ${b}`;
+        ctx.font = "11px sans-serif";
+        const tw = ctx.measureText(label).width + 20;
+        if (bx + tw > W - 36) { bx = 36; by += 28; }
+        ctx.fillStyle = "rgba(223,18,120,0.25)";
+        roundRect(ctx, bx, by, tw, 20, 10); ctx.fill();
+        ctx.fillStyle = "#FFB3D1";
+        ctx.fillText(label, bx + 10, by + 14);
+        bx += tw + 8;
+      });
+    }
+
+    // Footer
+    ctx.fillStyle = "rgba(255,255,255,0.15)";
+    ctx.font = "10px sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("SAP Next Gen Connections Passport  ·  sap.com/nextgen", W / 2, H - 18);
+    ctx.textAlign = "left";
+
+    // Download
+    const link = document.createElement("a");
+    link.download = `connections-passport-${(displayName(user) || "passport").replace(/\s+/g,"-").toLowerCase()}.png`;
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+
+    setShareCopied(true);
+    setTimeout(() => setShareCopied(false), 2500);
+  }
+
+  function roundRect(ctx, x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
   }
 
   return (
@@ -1906,7 +1771,7 @@ Collecting global connections at SAP Next Gen! 🌍`;
                   border: `1px solid ${shareCopied ? "rgba(93,255,160,0.4)" : "rgba(255,255,255,0.2)"}`,
                 }}>
                 {shareCopied ? <Check size={12} /> : <Share2 size={12} />}
-                {shareCopied ? "Copied!" : "Share"}
+                {shareCopied ? "Downloaded!" : "Share"}
               </button>
             </div>
           </div>
@@ -2124,7 +1989,7 @@ function SignupPage({ onComplete, users, editMode = false, initialData = null, o
 
   const consentValid = consent.dataProcessing && consent.guidelines;
   const step1Valid = form.name.trim().length > 1;
-  const step2Valid = form.interests.length >= 2;
+  const step2Valid = true; // interests are optional
 
   return (
     <div className="flex-1 overflow-y-auto" style={{ backgroundColor: "#EAF5FF" }}>
@@ -2405,10 +2270,11 @@ Thank you.`}
             </div>
 
             <div>
-              <label className="text-xs font-semibold text-[#002060] block mb-1">SAP Office</label>
+              <label className="text-xs font-semibold text-[#002060] block mb-1">SAP Office <span className="font-normal text-[#7C8896]">(optional)</span></label>
               <select value={form.office} onChange={e => update("office", e.target.value)}
                 className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
                 style={{ borderColor: "#CFE6FA" }}>
+                <option value="">— Select your office —</option>
                 {[...OFFICES].sort((a, b) => a.office.localeCompare(b.office)).map(o => <option key={o.office}>{o.office}</option>)}
               </select>
               <div className="flex items-center gap-2 mt-1.5 text-[11px] text-[#7C8896]">
@@ -2522,8 +2388,8 @@ Thank you.`}
                 {editMode ? "Update your interests" : "Pick your interests"}
               </h2>
               <p className="text-xs text-[#7C8896] mb-5">
-                Choose 2–10 topics — we use these to find you more relevant matches and conversation starters.
-                <span className="ml-2 font-medium" style={{ color: form.interests.length >= 2 ? "#1B90FF" : "#7C8896" }}>
+                Optional — choose up to 10 topics. We use these to find you more relevant matches and conversation starters.
+                <span className="ml-2 font-medium" style={{ color: form.interests.length > 0 ? "#1B90FF" : "#7C8896" }}>
                   {form.interests.length}/10 selected
                 </span>
               </p>
@@ -2568,6 +2434,18 @@ Thank you.`}
                       Other
                     </span>
                   </div>
+                  {/* Show previously saved custom interests as removable chips */}
+                  {form.interests.filter(i => !INTEREST_POOL.includes(i)).length > 0 && (
+                    <div className="flex flex-wrap gap-2 mb-2.5">
+                      {form.interests.filter(i => !INTEREST_POOL.includes(i)).map(item => (
+                        <button key={item} onClick={() => toggleInterest(item)}
+                          className="rounded-full px-3.5 py-1.5 text-xs font-medium flex items-center gap-1.5 transition-all"
+                          style={{ backgroundColor: "#002060", color: "#fff", border: "1.5px solid #002060" }}>
+                          <span>✓</span>{item}<span style={{ marginLeft: 2, opacity: 0.7 }}>×</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                   <div className="flex gap-2">
                     <input
                       value={otherInterest}
@@ -3125,64 +3003,108 @@ const TUTORIAL_STEPS = [
     icon: Stamp,
     title: "Welcome to your Passport",
     body: "This is your personal Connections Passport. Every coffee chat you complete earns a stamp — collect them from different regions and offices around the world.",
-    highlight: null,
+    targetId: null,
   },
   {
     icon: Shuffle,
     title: "Spin to find a match",
-    body: "In the center panel, hit the pink spin button to get a suggested colleague. You can reshuffle up to 3 times a day if you'd like a different suggestion.",
-    highlight: null,
+    body: "Hit the pink spin button to get a suggested colleague. You can reshuffle up to 3 times a day if you'd like a different suggestion.",
+    targetId: "tutorial-spin-btn",
   },
   {
     icon: Check,
     title: "Accept a match",
-    body: "When you find someone you'd like to meet, click Accept match. You can accept up to 3 matches per day. They'll see you in their Active Matches.",
-    highlight: null,
+    body: "When you find someone you'd like to meet, click Accept match. You can accept up to 3 matches per day.",
+    targetId: "tutorial-accept-btn",
   },
   {
     icon: Coffee,
     title: "Have your chat & confirm",
-    body: "Schedule a 30-minute chat using the invite link in Active Matches. After you've met, click We met — both of you need to confirm to earn your stamps.",
-    highlight: null,
+    body: "Schedule a 30-minute chat using the Schedule in Teams button. After you've met, click We met — both of you need to confirm to earn your stamps.",
+    targetId: "tutorial-matches-panel",
   },
   {
     icon: Award,
     title: "Track your progress",
     body: "Head to the My Passport tab any time to see your stamps, badges, and how many regions and offices you've collected. Good luck — and happy connecting!",
-    highlight: null,
+    targetId: "tutorial-passport-tab",
   },
 ];
 
 function TutorialOverlay({ onClose }) {
   const [step, setStep] = useState(0);
+  const [targetRect, setTargetRect] = useState(null);
   const total = TUTORIAL_STEPS.length;
   const s = TUTORIAL_STEPS[step];
   const Icon = s.icon;
+  const PAD = 10;
+
+  // Measure the target element whenever the step changes
+  React.useEffect(() => {
+    if (!s.targetId) { setTargetRect(null); return; }
+    const el = document.getElementById(s.targetId);
+    if (!el) { setTargetRect(null); return; }
+    const r = el.getBoundingClientRect();
+    setTargetRect({ top: r.top - PAD, left: r.left - PAD, width: r.width + PAD * 2, height: r.height + PAD * 2 });
+  }, [step, s.targetId]);
 
   function finish() {
     localStorage.setItem("cp-tutorial-done", "1");
     onClose();
   }
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ backgroundColor: "rgba(0,22,66,0.7)", backdropFilter: "blur(4px)" }}>
-      <div className="w-full max-w-sm rounded-3xl overflow-hidden"
-        style={{ backgroundColor: "#fff", boxShadow: "0 24px 64px rgba(0,32,96,0.35)" }}>
+  // Card position: below target if there's room, otherwise centered
+  const cardStyle = targetRect
+    ? {
+        position: "fixed",
+        top: Math.min(targetRect.top + targetRect.height + 16, window.innerHeight - 320),
+        left: Math.max(16, Math.min(targetRect.left, window.innerWidth - 384 - 16)),
+        width: 360,
+        zIndex: 60,
+      }
+    : {
+        position: "fixed",
+        top: "50%", left: "50%",
+        transform: "translate(-50%, -50%)",
+        width: 360,
+        zIndex: 60,
+      };
 
-        {/* Header bar */}
-        <div className="px-6 pt-6 pb-4"
-          style={{ background: "linear-gradient(135deg, #001642 0%, #002060 100%)" }}>
+  return (
+    <div className="fixed inset-0" style={{ zIndex: 50 }}>
+      {/* Dark overlay with cutout for highlighted element */}
+      {targetRect ? (
+        <>
+          {/* Top */}
+          <div className="absolute" style={{ top: 0, left: 0, right: 0, height: targetRect.top, backgroundColor: "rgba(0,22,66,0.75)" }} />
+          {/* Left */}
+          <div className="absolute" style={{ top: targetRect.top, left: 0, width: targetRect.left, height: targetRect.height, backgroundColor: "rgba(0,22,66,0.75)" }} />
+          {/* Right */}
+          <div className="absolute" style={{ top: targetRect.top, left: targetRect.left + targetRect.width, right: 0, height: targetRect.height, backgroundColor: "rgba(0,22,66,0.75)" }} />
+          {/* Bottom */}
+          <div className="absolute" style={{ top: targetRect.top + targetRect.height, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,22,66,0.75)" }} />
+          {/* Highlight ring */}
+          <div className="absolute pointer-events-none" style={{
+            top: targetRect.top, left: targetRect.left,
+            width: targetRect.width, height: targetRect.height,
+            borderRadius: 16,
+            boxShadow: "0 0 0 3px #1B90FF, 0 0 24px rgba(27,144,255,0.5)",
+          }} />
+        </>
+      ) : (
+        <div className="absolute inset-0" style={{ backgroundColor: "rgba(0,22,66,0.7)", backdropFilter: "blur(4px)" }} />
+      )}
+
+      {/* Card */}
+      <div style={{ ...cardStyle, borderRadius: 24, backgroundColor: "#fff", boxShadow: "0 24px 64px rgba(0,32,96,0.35)", overflow: "hidden" }}>
+        {/* Header */}
+        <div className="px-6 pt-6 pb-4" style={{ background: "linear-gradient(135deg, #001642 0%, #002060 100%)" }}>
           <div className="flex items-center justify-between mb-4">
-            <span className="text-[10px] font-mono tracking-[0.2em] uppercase"
-              style={{ color: "#89D1FF" }}>
+            <span className="text-[10px] font-mono tracking-[0.2em] uppercase" style={{ color: "#89D1FF" }}>
               Getting started · {step + 1} of {total}
             </span>
-            <button onClick={finish} style={{ color: "rgba(255,255,255,0.4)" }}>
-              <X size={16} />
-            </button>
+            <button onClick={finish} style={{ color: "rgba(255,255,255,0.4)" }}><X size={16} /></button>
           </div>
-          {/* Progress bar */}
           <div className="flex gap-1.5">
             {Array.from({ length: total }).map((_, i) => (
               <div key={i} className="flex-1 h-1 rounded-full transition-all duration-300"
@@ -3193,40 +3115,32 @@ function TutorialOverlay({ onClose }) {
 
         {/* Content */}
         <div className="px-6 py-6 flex flex-col items-center text-center gap-4">
-          <div className="w-16 h-16 rounded-2xl flex items-center justify-center"
-            style={{ backgroundColor: "#EAF5FF" }}>
+          <div className="w-16 h-16 rounded-2xl flex items-center justify-center" style={{ backgroundColor: "#EAF5FF" }}>
             <Icon size={28} color="#002060" />
           </div>
           <div>
-            <h2 className="text-lg font-semibold mb-2"
-              style={{ color: "#002060", fontFamily: "'72Brand', sans-serif" }}>
+            <h2 className="text-lg font-semibold mb-2" style={{ color: "#002060", fontFamily: "'72Brand', sans-serif" }}>
               {s.title}
             </h2>
-            <p className="text-sm leading-relaxed" style={{ color: "#445063" }}>
-              {s.body}
-            </p>
+            <p className="text-sm leading-relaxed" style={{ color: "#445063" }}>{s.body}</p>
           </div>
         </div>
 
         {/* Footer */}
         <div className="px-6 pb-6 flex items-center justify-between gap-3">
-          <button
-            onClick={() => setStep(s => s - 1)}
-            disabled={step === 0}
+          <button onClick={() => setStep(s => s - 1)} disabled={step === 0}
             className="flex items-center gap-1.5 text-sm font-medium rounded-full px-4 py-2 disabled:opacity-0 transition-opacity"
             style={{ color: "#445063", backgroundColor: "#F5FAFF", border: "1px solid #CFE6FA" }}>
             <ArrowLeft size={14} /> Back
           </button>
           {step < total - 1 ? (
-            <button
-              onClick={() => setStep(s => s + 1)}
+            <button onClick={() => setStep(s => s + 1)}
               className="flex items-center gap-1.5 text-sm font-semibold rounded-full px-5 py-2"
               style={{ backgroundColor: "#1B90FF", color: "#fff" }}>
               Next <ArrowRight size={14} />
             </button>
           ) : (
-            <button
-              onClick={finish}
+            <button onClick={finish}
               className="flex items-center gap-1.5 text-sm font-semibold rounded-full px-5 py-2"
               style={{ backgroundColor: "#DF1278", color: "#fff" }}>
               Let's go! <Sparkles size={14} />
@@ -4014,16 +3928,26 @@ export default function CoffeePassportApp() {
         {hasSignedUp && (
         <div className="hidden sm:flex items-center gap-1 rounded-full p-1"
           style={{ backgroundColor: "#001642" }}>
-          {["dashboard","passport","signup"].map(v => (
-            <button key={v} onClick={() => { setView(v); setIsAdmin(false); }}
-              className="px-3 py-1.5 rounded-full text-xs font-medium capitalize transition-colors"
-              style={{
-                backgroundColor: view === v && !isAdmin ? "#1B90FF" : "transparent",
-                color: view === v && !isAdmin ? "#fff" : "#89D1FF",
-              }}>
-              {v === "passport" ? "My Passport" : v === "signup" ? "Profile" : "Dashboard"}
-            </button>
-          ))}
+          {["dashboard","passport","signup"].map(v => {
+            const profileIncomplete = v === "signup" && currentUser && (
+              !currentUser.office || !currentUser.interests || currentUser.interests.length === 0
+            );
+            return (
+              <button key={v} onClick={() => { setView(v); setIsAdmin(false); }}
+                id={v === "passport" ? "tutorial-passport-tab" : undefined}
+                className="relative px-3 py-1.5 rounded-full text-xs font-medium capitalize transition-colors"
+                style={{
+                  backgroundColor: view === v && !isAdmin ? "#1B90FF" : "transparent",
+                  color: view === v && !isAdmin ? "#fff" : "#89D1FF",
+                }}>
+                {v === "passport" ? "My Passport" : v === "signup" ? "Profile" : "Dashboard"}
+                {profileIncomplete && (
+                  <span className="absolute top-0.5 right-0.5 w-2 h-2 rounded-full"
+                    style={{ backgroundColor: "#DF1278", border: "1.5px solid #001642" }} />
+                )}
+              </button>
+            );
+          })}
         </div>
         )}
         <div className="flex items-center gap-2">
@@ -4250,7 +4174,7 @@ export default function CoffeePassportApp() {
                   );
                 })()}
               </div>
-              <div className="overflow-hidden border-l" style={{ backgroundColor: "#fff", borderColor: "#CFE6FA" }}>
+              <div id="tutorial-matches-panel" className="overflow-hidden border-l" style={{ backgroundColor: "#fff", borderColor: "#CFE6FA" }}>
                 <MatchesPanel matches={activeMatches} users={matcherUsers} currentUser={currentUser} onConfirm={handleConfirm} onRemove={handleRemove} onAcknowledge={handleAcknowledge} />
               </div>
             </div>
