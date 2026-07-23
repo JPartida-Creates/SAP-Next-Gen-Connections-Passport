@@ -15,6 +15,7 @@ service PassportService @(path:'/PassportService') {
   action recordReshuffle()                 returns Boolean;
   action pauseUser()                       returns Boolean;
   action deleteUser()                      returns Boolean;
+  action adminResetShuffles(email: String) returns Boolean;
 
   action upsertUser(profile: {
     name:          String;

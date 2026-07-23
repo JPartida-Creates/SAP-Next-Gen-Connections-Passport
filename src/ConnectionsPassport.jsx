@@ -59,6 +59,7 @@ const API = {
   recordReshuffle: ()           => API._call("recordReshuffle"),
   pauseUser:       ()           => API._call("pauseUser"),
   deleteUser:      ()           => API._call("deleteUser"),
+  adminResetShuffles: (email)   => API._call("adminResetShuffles", { email }),
 };
 
 /* Normalize a user row from the CAP API into the shape the UI expects.
@@ -2707,7 +2708,7 @@ function LandingPage({ onJoin, ssoUser }) {
 
 
 
-function AdminPanel({ users, matches }) {
+function AdminPanel({ users, matches, onResetShuffles }) {
   const optedIn = users.filter(u => u.optedIn).length;
   const completed = matches.filter(m => m.status === "completed").length;
   const active = matches.filter(m => m.status === "active").length;
@@ -2798,12 +2799,56 @@ function AdminPanel({ users, matches }) {
             </table>
           </div>
         </div>
+        <div className="rounded-xl border overflow-hidden" style={{ borderColor: "#CFE6FA" }}>
+          <div className="px-3 py-2 text-xs font-semibold text-[#002060] border-b" style={{ borderColor: "#CFE6FA", backgroundColor: "#EAF5FF" }}>
+            Users
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-[#7C8896] border-b" style={{ borderColor: "#CFE6FA" }}>
+                  <th className="px-3 py-2">Name</th>
+                  <th className="px-3 py-2">Office</th>
+                  <th className="px-3 py-2">Status</th>
+                  <th className="px-3 py-2">Shuffles left</th>
+                  <th className="px-3 py-2"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...users].sort((a, b) => (a.name || "").localeCompare(b.name || "")).map(u => {
+                  const shufflesUsed = u.lastReshuffleDate === new Date().toDateString() ? (u.reshufflesUsedToday || 0) : 0;
+                  const shufflesLeft = Math.max(0, 3 - shufflesUsed);
+                  return (
+                    <tr key={u.id} className="border-b last:border-0" style={{ borderColor: "#EAF5FF" }}>
+                      <td className="px-3 py-2 text-[#002060] font-medium">{u.name}</td>
+                      <td className="px-3 py-2 text-[#445063]">{u.office || "—"}</td>
+                      <td className="px-3 py-2">
+                        {u.deleted ? <span style={{ color: "#7C8896" }}>Deleted</span>
+                          : u.paused ? <span style={{ color: "#DF1278" }}>Paused</span>
+                          : <span style={{ color: "#1B90FF" }}>Active</span>}
+                      </td>
+                      <td className="px-3 py-2 font-mono text-[#445063]">{shufflesLeft} / 3</td>
+                      <td className="px-3 py-2">
+                        {shufflesLeft < 3 && (
+                          <button
+                            onClick={() => onResetShuffles && onResetShuffles(u.id)}
+                            className="text-[10px] font-medium rounded-full px-2.5 py-1 transition-colors"
+                            style={{ backgroundColor: "#EAF5FF", color: "#002060", border: "1px solid #CFE6FA" }}>
+                            Reset shuffles
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
   );
 }
-
-/* ---------------------- Root ---------------------- */
 
 /* ---------------------- Stamp Sound ---------------------- */
 
@@ -3891,6 +3936,20 @@ export default function CoffeePassportApp() {
     setView("goodbye");
   }
 
+  async function handleAdminResetShuffles(email) {
+    if (backendAvailable) {
+      await API.adminResetShuffles(email).catch(() => {});
+      // Optimistically update the peer list so the count refreshes immediately
+      setLivePeers(peers => peers.map(u =>
+        u.email === email ? { ...u, reshufflesUsedToday: 0, lastReshuffleDate: null } : u
+      ));
+    } else {
+      setDemoUsers(users => users.map(u =>
+        u.id === email ? { ...u, reshufflesUsedToday: 0, lastReshuffleDate: null } : u
+      ));
+    }
+  }
+
   return (
     <div className="flex flex-col" style={{ height: "100vh", backgroundColor: "#EAF5FF", fontFamily: "'Inter', sans-serif" }}>
       <NotificationBanner notifications={notifications} onDismiss={dismissNotif} />
@@ -4193,7 +4252,7 @@ export default function CoffeePassportApp() {
               ))}
             </div>
             <div className="flex-1 overflow-hidden">
-              {adminTab === "dashboard" && <AdminPanel users={matcherUsers} matches={activeMatches} />}
+              {adminTab === "dashboard" && <AdminPanel users={matcherUsers} matches={activeMatches} onResetShuffles={handleAdminResetShuffles} />}
               {adminTab === "demo"      && <DemoMode onExit={() => setAdminTab("dashboard")} seedUsers={demoState.users} />}
             </div>
           </div>

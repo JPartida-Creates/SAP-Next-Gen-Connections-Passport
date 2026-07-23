@@ -332,6 +332,17 @@ module.exports = cds.service.impl(async function (srv) {
       `UPDATE "${schema}"."MATCHES" SET "STATUS"='expired' WHERE ("USERAMAIL"=? OR "USERBMAIL"=?) AND "STATUS" IN ('active','pending_confirmation')`,
       [email, email]
     );
+  // ── adminResetShuffles ───────────────────────────────────────────────────
+  srv.on("adminResetShuffles", async (req) => {
+    const caller = callerEmail(req);
+    if (!caller) return;
+    if (caller !== "j.partida@sap.com") req.reject(403, "Admin only");
+    const { email } = req.data;
+    if (!email) req.reject(400, "email required");
+    await exec(
+      `UPDATE "${schema}"."USERS" SET "RESHUFFLESUSEDTODAY"=0,"LASTRESHUFFLEDATE"=NULL WHERE "EMAIL"=?`,
+      [email]
+    );
     return true;
   });
 });
