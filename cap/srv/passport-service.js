@@ -72,6 +72,7 @@ function rowToUser(r) {
   return {
     email:                r.EMAIL,
     name:                 r.NAME,
+    preferredName:        r.PREFERREDNAME || "",
     role:                 r.ROLE,
     office:               r.OFFICE,
     country:              r.COUNTRY,
@@ -206,14 +207,14 @@ module.exports = cds.service.impl(async function (srv) {
 
     if (existing.length > 0) {
       await exec(
-        `UPDATE "${schema}"."USERS" SET "NAME"=?,"ROLE"=?,"OFFICE"=?,"COUNTRY"=?,"REGION"=?,"INTERESTS"=?,"CONSENTGIVEN"=?,"DELETED"=FALSE,"OPTEDIN"=TRUE,"PAUSED"=FALSE WHERE "EMAIL"=?`,
-        [profile.name, profile.role, profile.office, profile.country, profile.region, profile.interests, profile.consentGiven !== false, email]
+        `UPDATE "${schema}"."USERS" SET "NAME"=?,"PREFERREDNAME"=?,"ROLE"=?,"OFFICE"=?,"COUNTRY"=?,"REGION"=?,"INTERESTS"=?,"CONSENTGIVEN"=?,"DELETED"=FALSE,"OPTEDIN"=TRUE,"PAUSED"=FALSE WHERE "EMAIL"=?`,
+        [profile.name, profile.preferredName || "", profile.role, profile.office, profile.country, profile.region, profile.interests, profile.consentGiven !== false, email]
       );
     } else {
       await exec(
-        `INSERT INTO "${schema}"."USERS" ("EMAIL","NAME","ROLE","OFFICE","COUNTRY","REGION","INTERESTS","CONSENTGIVEN","OPTEDIN","PAUSED","DELETED","COLLECTEDREGIONS","COLLECTEDOFFICES","CHATSCOMPLETED","BADGES","RESHUFFLESUSEDTODAY","MATCHESACCEPTEDTODAY","JOINEDAT")
-         VALUES (?,?,?,?,?,?,?,TRUE,TRUE,FALSE,FALSE,'{}','{}',0,'[]',0,0,CURRENT_TIMESTAMP)`,
-        [email, profile.name, profile.role, profile.office, profile.country, profile.region, profile.interests]
+        `INSERT INTO "${schema}"."USERS" ("EMAIL","NAME","PREFERREDNAME","ROLE","OFFICE","COUNTRY","REGION","INTERESTS","CONSENTGIVEN","OPTEDIN","PAUSED","DELETED","COLLECTEDREGIONS","COLLECTEDOFFICES","CHATSCOMPLETED","BADGES","RESHUFFLESUSEDTODAY","MATCHESACCEPTEDTODAY","JOINEDAT")
+         VALUES (?,?,?,?,?,?,?,?,TRUE,TRUE,FALSE,FALSE,'{}','{}',0,'[]',0,0,CURRENT_TIMESTAMP)`,
+        [email, profile.name, profile.preferredName || "", profile.role, profile.office, profile.country, profile.region, profile.interests]
       );
     }
     const rows = await exec(`SELECT * FROM "${schema}"."USERS" WHERE "EMAIL"=?`, [email]);

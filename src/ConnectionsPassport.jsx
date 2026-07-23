@@ -2,7 +2,8 @@ import React, { useState, useMemo, useCallback } from "react";
 import {
   Coffee, MapPin, Globe2, Stamp, User, Users, Shuffle, Check, Clock,
   X, ShieldCheck, ArrowRight, ArrowLeft, Sparkles, Building2, Award,
-  ChevronRight, LogIn, LayoutDashboard, BadgeCheck, Hourglass, Eye, EyeOff
+  ChevronRight, LogIn, LayoutDashboard, BadgeCheck, Hourglass, Eye, EyeOff,
+  Share2, HelpCircle
 } from "lucide-react";
 
 /* ============================================================
@@ -95,6 +96,17 @@ function normalizeUser(u) {
   return partial;
 }
 
+/* Returns the name to display in the UI for a user.
+   If the user set a preferred first name, that takes precedence everywhere. */
+function displayName(user) {
+  if (!user) return "";
+  if (user.preferredName && user.preferredName.trim()) {
+    const lastName = (user.name || "").trim().split(" ").slice(1).join(" ");
+    return lastName ? `${user.preferredName.trim()} ${lastName}` : user.preferredName.trim();
+  }
+  return user.name || "";
+}
+
 /* Normalize a match from the CAP API: add userAId/userBId aliases so the
    MatchRow/MatchPanel components don't need to know about the email fields. */
 function normalizeMatch(m) {
@@ -116,8 +128,8 @@ function normalizeMatch(m) {
    Teal     #1B90FF  secondary accent (region color A)
    Coral    #002060  secondary accent (region color B)
    Sage     #7C8896  secondary accent (region color C)
-   Type: display "Fraunces" (serif, stamp/passport feel),
-         body "Inter", utility "IBM Plex Mono" (codes/IDs)
+   Type: display "'72Brand', sans-serif" (headings/names),
+         body "'72Brand', sans-serif", utility "'72Brand', sans-serif"
 ----------------------------------------------------------- */
 
 /* ---------------------- Seed data ---------------------- */
@@ -149,86 +161,205 @@ const COUNTRY_EMOJI = {
 };
 
 const OFFICES = [
-  { office: "Abu Dhabi",        country: "UAE",            region: "MEE"  },
-  { office: "Amsterdam",        country: "Netherlands",    region: "EMEA" },
-  { office: "Atlanta",          country: "United States",  region: "NA"   },
-  { office: "Auckland",         country: "New Zealand",    region: "APAC" },
-  { office: "Bangalore",        country: "India",          region: "APAC" },
-  { office: "Bangkok",          country: "Thailand",       region: "APAC" },
-  { office: "Barcelona",        country: "Spain",          region: "EMEA" },
-  { office: "Beijing",          country: "China",          region: "APAC" },
-  { office: "Berlin",           country: "Germany",        region: "EMEA" },
-  { office: "Bogotá",           country: "Colombia",       region: "NA"   },
-  { office: "Boston",           country: "United States",  region: "NA"   },
-  { office: "Brussels",         country: "Belgium",        region: "EMEA" },
-  { office: "Bucharest",        country: "Romania",        region: "EMEA" },
-  { office: "Budapest",         country: "Hungary",        region: "EMEA" },
-  { office: "Buenos Aires",     country: "Argentina",      region: "NA"   },
-  { office: "Cairo",            country: "Egypt",          region: "MEE"  },
-  { office: "Cape Town",        country: "South Africa",   region: "MEE"  },
-  { office: "Chicago",          country: "United States",  region: "NA"   },
-  { office: "Copenhagen",       country: "Denmark",        region: "EMEA" },
-  { office: "Dallas",           country: "United States",  region: "NA"   },
-  { office: "Doha",             country: "Qatar",          region: "MEE"  },
-  { office: "Dubai",            country: "UAE",            region: "MEE"  },
-  { office: "Dublin",           country: "Ireland",        region: "EMEA" },
-  { office: "Frankfurt",        country: "Germany",        region: "EMEA" },
-  { office: "Geneva",           country: "Switzerland",    region: "EMEA" },
-  { office: "Hamburg",          country: "Germany",        region: "EMEA" },
-  { office: "Helsinki",         country: "Finland",        region: "EMEA" },
-  { office: "Ho Chi Minh City", country: "Vietnam",        region: "APAC" },
-  { office: "Hyderabad",        country: "India",          region: "APAC" },
-  { office: "Istanbul",         country: "Turkey",         region: "MEE"  },
-  { office: "Jakarta",          country: "Indonesia",      region: "APAC" },
-  { office: "Jeddah",           country: "Saudi Arabia",   region: "MEE"  },
-  { office: "Johannesburg",     country: "South Africa",   region: "MEE"  },
-  { office: "Kuala Lumpur",     country: "Malaysia",       region: "APAC" },
-  { office: "Kuwait City",      country: "Kuwait",         region: "MEE"  },
-  { office: "Lagos",            country: "Nigeria",        region: "MEE"  },
-  { office: "Lisbon",           country: "Portugal",       region: "EMEA" },
-  { office: "London",           country: "United Kingdom", region: "EMEA" },
-  { office: "Lyon",             country: "France",         region: "EMEA" },
-  { office: "Madrid",           country: "Spain",          region: "EMEA" },
-  { office: "Manama",           country: "Bahrain",        region: "MEE"  },
-  { office: "Manila",           country: "Philippines",    region: "APAC" },
-  { office: "Manchester",       country: "United Kingdom", region: "EMEA" },
-  { office: "Melbourne",        country: "Australia",      region: "APAC" },
-  { office: "Mexico City",      country: "Mexico",         region: "NA"   },
-  { office: "Milan",            country: "Italy",          region: "EMEA" },
-  { office: "Montreal",         country: "Canada",         region: "NA"   },
-  { office: "Mumbai",           country: "India",          region: "APAC" },
-  { office: "Munich",           country: "Germany",        region: "EMEA" },
-  { office: "Nairobi",          country: "Kenya",          region: "MEE"  },
-  { office: "New Delhi",        country: "India",          region: "APAC" },
-  { office: "New York",         country: "United States",  region: "NA"   },
-  { office: "Newtown Square",   country: "United States",  region: "NA"   },
-  { office: "Oslo",             country: "Norway",         region: "EMEA" },
-  { office: "Osaka",            country: "Japan",          region: "APAC" },
-  { office: "Palo Alto",        country: "United States",  region: "NA"   },
-  { office: "Paris",            country: "France",         region: "EMEA" },
-  { office: "Prague",           country: "Czech Republic", region: "EMEA" },
-  { office: "Rio de Janeiro",   country: "Brazil",         region: "NA"   },
-  { office: "Riyadh",           country: "Saudi Arabia",   region: "MEE"  },
-  { office: "Rome",             country: "Italy",          region: "EMEA" },
-  { office: "San Ramon",        country: "United States",  region: "NA"   },
-  { office: "Santiago",         country: "Chile",          region: "NA"   },
-  { office: "São Paulo",        country: "Brazil",         region: "NA"   },
-  { office: "Seattle",          country: "United States",  region: "NA"   },
-  { office: "Seoul",            country: "South Korea",    region: "APAC" },
-  { office: "Shanghai",         country: "China",          region: "APAC" },
-  { office: "Shenzhen",         country: "China",          region: "APAC" },
-  { office: "Singapore",        country: "Singapore",      region: "APAC" },
-  { office: "Stockholm",        country: "Sweden",         region: "EMEA" },
-  { office: "Sydney",           country: "Australia",      region: "APAC" },
-  { office: "Tel Aviv",         country: "Israel",         region: "MEE"  },
-  { office: "Tokyo",            country: "Japan",          region: "APAC" },
-  { office: "Toronto",          country: "Canada",         region: "NA"   },
-  { office: "Vancouver",        country: "Canada",         region: "NA"   },
-  { office: "Vienna",           country: "Austria",        region: "EMEA" },
-  { office: "Walldorf",         country: "Germany",        region: "EMEA" },
-  { office: "Warsaw",           country: "Poland",         region: "EMEA" },
-  { office: "Washington DC",    country: "United States",  region: "NA"   },
-  { office: "Zurich",           country: "Switzerland",    region: "EMEA" },
+  // Latin America
+  { office: "Buenos Aires",        country: "Argentina",      region: "NA"   },
+  { office: "Rio de Janeiro",      country: "Brazil",         region: "NA"   },
+  { office: "Sao Paulo",           country: "Brazil",         region: "NA"   },
+  { office: "Sao Leopoldo",        country: "Brazil",         region: "NA"   },
+  { office: "Calgary",             country: "Canada",         region: "NA"   },
+  { office: "Montreal",            country: "Canada",         region: "NA"   },
+  { office: "Ottawa",              country: "Canada",         region: "NA"   },
+  { office: "Toronto",             country: "Canada",         region: "NA"   },
+  { office: "Vancouver",           country: "Canada",         region: "NA"   },
+  { office: "Waterloo",            country: "Canada",         region: "NA"   },
+  { office: "Santiago",            country: "Chile",          region: "NA"   },
+  { office: "Bogota",              country: "Colombia",       region: "NA"   },
+  { office: "Medellin",            country: "Colombia",       region: "NA"   },
+  { office: "San Jose",            country: "Costa Rica",     region: "NA"   },
+  { office: "Quito",               country: "Ecuador",        region: "NA"   },
+  { office: "Mexico City",         country: "Mexico",         region: "NA"   },
+  { office: "Monterrey",           country: "Mexico",         region: "NA"   },
+  { office: "Panama City",         country: "Panama",         region: "NA"   },
+  { office: "Lima",                country: "Peru",           region: "NA"   },
+  { office: "San Juan",            country: "Puerto Rico",    region: "NA"   },
+  // North America (US)
+  { office: "Alpharetta",          country: "United States",  region: "NA"   },
+  { office: "Atlanta",             country: "United States",  region: "NA"   },
+  { office: "Austin",              country: "United States",  region: "NA"   },
+  { office: "Bellevue",            country: "United States",  region: "NA"   },
+  { office: "Birmingham",          country: "United States",  region: "NA"   },
+  { office: "Boston",              country: "United States",  region: "NA"   },
+  { office: "Chicago",             country: "United States",  region: "NA"   },
+  { office: "Cincinnati",          country: "United States",  region: "NA"   },
+  { office: "Colorado Springs",    country: "United States",  region: "NA"   },
+  { office: "Houston",             country: "United States",  region: "NA"   },
+  { office: "Reston",              country: "United States",  region: "NA"   },
+  { office: "Indianapolis",        country: "United States",  region: "NA"   },
+  { office: "La Crosse",           country: "United States",  region: "NA"   },
+  { office: "Lake Mary",           country: "United States",  region: "NA"   },
+  { office: "Miami",               country: "United States",  region: "NA"   },
+  { office: "Minneapolis",         country: "United States",  region: "NA"   },
+  { office: "Newport Beach",       country: "United States",  region: "NA"   },
+  { office: "Newtown Square",      country: "United States",  region: "NA"   },
+  { office: "New York",            country: "United States",  region: "NA"   },
+  { office: "Palo Alto",           country: "United States",  region: "NA"   },
+  { office: "Pittsburgh",          country: "United States",  region: "NA"   },
+  { office: "Raleigh",             country: "United States",  region: "NA"   },
+  { office: "San Diego",           country: "United States",  region: "NA"   },
+  { office: "San Francisco",       country: "United States",  region: "NA"   },
+  { office: "San Ramon",           country: "United States",  region: "NA"   },
+  { office: "St Louis",            country: "United States",  region: "NA"   },
+  { office: "Tempe",               country: "United States",  region: "NA"   },
+  { office: "Washington D.C.",     country: "United States",  region: "NA"   },
+  { office: "Caracas",             country: "Venezuela",      region: "NA"   },
+  // Australia & New Zealand
+  { office: "Adelaide",            country: "Australia",      region: "APAC" },
+  { office: "Brisbane",            country: "Australia",      region: "APAC" },
+  { office: "Canberra",            country: "Australia",      region: "APAC" },
+  { office: "Melbourne",           country: "Australia",      region: "APAC" },
+  { office: "Perth",               country: "Australia",      region: "APAC" },
+  { office: "Sydney",              country: "Australia",      region: "APAC" },
+  // China & Hong Kong
+  { office: "Beijing",             country: "China",          region: "APAC" },
+  { office: "Chengdu",             country: "China",          region: "APAC" },
+  { office: "Dalian",              country: "China",          region: "APAC" },
+  { office: "Guangzhou",           country: "China",          region: "APAC" },
+  { office: "Hong Kong",           country: "Hong Kong",      region: "APAC" },
+  { office: "Jinan",               country: "China",          region: "APAC" },
+  { office: "Nanjing",             country: "China",          region: "APAC" },
+  { office: "Shanghai",            country: "China",          region: "APAC" },
+  { office: "Shenzhen",            country: "China",          region: "APAC" },
+  { office: "Wuhan",               country: "China",          region: "APAC" },
+  { office: "Xian",                country: "China",          region: "APAC" },
+  // Southeast Asia & Pacific
+  { office: "Jakarta",             country: "Indonesia",      region: "APAC" },
+  { office: "Ahmedabad",           country: "India",          region: "APAC" },
+  { office: "Bangalore",           country: "India",          region: "APAC" },
+  { office: "Chennai",             country: "India",          region: "APAC" },
+  { office: "Delhi",               country: "India",          region: "APAC" },
+  { office: "Gurgaon",             country: "India",          region: "APAC" },
+  { office: "Hyderabad",           country: "India",          region: "APAC" },
+  { office: "Kolkata",             country: "India",          region: "APAC" },
+  { office: "Mumbai",              country: "India",          region: "APAC" },
+  { office: "Pune",                country: "India",          region: "APAC" },
+  { office: "Nagoya",              country: "Japan",          region: "APAC" },
+  { office: "Oita",                country: "Japan",          region: "APAC" },
+  { office: "Osaka",               country: "Japan",          region: "APAC" },
+  { office: "Tokyo",               country: "Japan",          region: "APAC" },
+  { office: "Seoul",               country: "South Korea",    region: "APAC" },
+  { office: "Kuala Lumpur",        country: "Malaysia",       region: "APAC" },
+  { office: "Auckland",            country: "New Zealand",    region: "APAC" },
+  { office: "Wellington",          country: "New Zealand",    region: "APAC" },
+  { office: "Manila",              country: "Philippines",    region: "APAC" },
+  { office: "Singapore",           country: "Singapore",      region: "APAC" },
+  { office: "Bangkok",             country: "Thailand",       region: "APAC" },
+  { office: "Taipei",              country: "Taiwan",         region: "APAC" },
+  { office: "Hanoi",               country: "Vietnam",        region: "APAC" },
+  { office: "Ho Chi Minh City",    country: "Vietnam",        region: "APAC" },
+  // Germany
+  { office: "Berlin",              country: "Germany",        region: "EMEA" },
+  { office: "Bonn",                country: "Germany",        region: "EMEA" },
+  { office: "Dresden",             country: "Germany",        region: "EMEA" },
+  { office: "Duesseldorf",         country: "Germany",        region: "EMEA" },
+  { office: "Frankfurt a.M.",      country: "Germany",        region: "EMEA" },
+  { office: "Hamburg",             country: "Germany",        region: "EMEA" },
+  { office: "Hannover",            country: "Germany",        region: "EMEA" },
+  { office: "Heilbronn",           country: "Germany",        region: "EMEA" },
+  { office: "Karlsruhe",           country: "Germany",        region: "EMEA" },
+  { office: "Leipzig",             country: "Germany",        region: "EMEA" },
+  { office: "Leverkusen",          country: "Germany",        region: "EMEA" },
+  { office: "Markdorf",            country: "Germany",        region: "EMEA" },
+  { office: "Mannheim",            country: "Germany",        region: "EMEA" },
+  { office: "Munich",              country: "Germany",        region: "EMEA" },
+  { office: "Potsdam",             country: "Germany",        region: "EMEA" },
+  { office: "Rheda-Wiedenbrueck",  country: "Germany",        region: "EMEA" },
+  { office: "St. Leon-Rot",        country: "Germany",        region: "EMEA" },
+  { office: "St. Ingbert",         country: "Germany",        region: "EMEA" },
+  { office: "Stuttgart",           country: "Germany",        region: "EMEA" },
+  { office: "Walldorf",            country: "Germany",        region: "EMEA" },
+  // MEE (Middle East & Africa)
+  { office: "Abu Dhabi",           country: "UAE",            region: "MEE"  },
+  { office: "Dubai",               country: "UAE",            region: "MEE"  },
+  { office: "Luanda",              country: "Angola",         region: "MEE"  },
+  { office: "Manama",              country: "Bahrain",        region: "MEE"  },
+  { office: "Cairo",               country: "Egypt",          region: "MEE"  },
+  { office: "Raanana",             country: "Israel",         region: "MEE"  },
+  { office: "Tel Aviv",            country: "Israel",         region: "MEE"  },
+  { office: "Baghdad",             country: "Iraq",           region: "MEE"  },
+  { office: "Nairobi",             country: "Kenya",          region: "MEE"  },
+  { office: "Kuwait City",         country: "Kuwait",         region: "MEE"  },
+  { office: "Casablanca",          country: "Morocco",        region: "MEE"  },
+  { office: "Lagos",               country: "Nigeria",        region: "MEE"  },
+  { office: "Muscat",              country: "Oman",           region: "MEE"  },
+  { office: "Islamabad",           country: "Pakistan",       region: "MEE"  },
+  { office: "Karachi",             country: "Pakistan",       region: "MEE"  },
+  { office: "Doha",                country: "Qatar",          region: "MEE"  },
+  { office: "Al Khobar",           country: "Saudi Arabia",   region: "MEE"  },
+  { office: "Jeddah",              country: "Saudi Arabia",   region: "MEE"  },
+  { office: "Riyadh",              country: "Saudi Arabia",   region: "MEE"  },
+  { office: "Cape Town",           country: "South Africa",   region: "MEE"  },
+  { office: "Johannesburg",        country: "South Africa",   region: "MEE"  },
+  // Rest of EMEA
+  { office: "Vienna",              country: "Austria",        region: "EMEA" },
+  { office: "Baku",                country: "Azerbaijan",     region: "EMEA" },
+  { office: "Brussels",            country: "Belgium",        region: "EMEA" },
+  { office: "Sofia",               country: "Bulgaria",       region: "EMEA" },
+  { office: "Biel",                country: "Switzerland",    region: "EMEA" },
+  { office: "Lausanne",            country: "Switzerland",    region: "EMEA" },
+  { office: "Vevey",               country: "Switzerland",    region: "EMEA" },
+  { office: "Zurich",              country: "Switzerland",    region: "EMEA" },
+  { office: "Nicosia",             country: "Cyprus",         region: "EMEA" },
+  { office: "Brno",                country: "Czech Republic", region: "EMEA" },
+  { office: "Prague",              country: "Czech Republic", region: "EMEA" },
+  { office: "Copenhagen",          country: "Denmark",        region: "EMEA" },
+  { office: "Tallinn",             country: "Estonia",        region: "EMEA" },
+  { office: "Barcelona",           country: "Spain",          region: "EMEA" },
+  { office: "Madrid",              country: "Spain",          region: "EMEA" },
+  { office: "Helsinki",            country: "Finland",        region: "EMEA" },
+  { office: "Caen",                country: "France",         region: "EMEA" },
+  { office: "Lyon",                country: "France",         region: "EMEA" },
+  { office: "Mougins",             country: "France",         region: "EMEA" },
+  { office: "Paris",               country: "France",         region: "EMEA" },
+  { office: "Toulouse",            country: "France",         region: "EMEA" },
+  { office: "Athens",              country: "Greece",         region: "EMEA" },
+  { office: "Zagreb",              country: "Croatia",        region: "EMEA" },
+  { office: "Budapest",            country: "Hungary",        region: "EMEA" },
+  { office: "Dublin, IE",          country: "Ireland",        region: "EMEA" },
+  { office: "Galway",              country: "Ireland",        region: "EMEA" },
+  { office: "Genoa",               country: "Italy",          region: "EMEA" },
+  { office: "Milan",               country: "Italy",          region: "EMEA" },
+  { office: "Rome",                country: "Italy",          region: "EMEA" },
+  { office: "Almaty",              country: "Kazakhstan",     region: "EMEA" },
+  { office: "Astana",              country: "Kazakhstan",     region: "EMEA" },
+  { office: "Vilnius",             country: "Lithuania",      region: "EMEA" },
+  { office: "Luxembourg",          country: "Luxembourg",     region: "EMEA" },
+  { office: "Riga",                country: "Latvia",         region: "EMEA" },
+  { office: "Amsterdam",           country: "Netherlands",    region: "EMEA" },
+  { office: "s-Hertogenbosch",     country: "Netherlands",    region: "EMEA" },
+  { office: "Oslo",                country: "Norway",         region: "EMEA" },
+  { office: "Krakow",              country: "Poland",         region: "EMEA" },
+  { office: "Gliwice",             country: "Poland",         region: "EMEA" },
+  { office: "Warsaw",              country: "Poland",         region: "EMEA" },
+  { office: "Lisbon",              country: "Portugal",       region: "EMEA" },
+  { office: "Bucharest",           country: "Romania",        region: "EMEA" },
+  { office: "Cluj-Napoca",         country: "Romania",        region: "EMEA" },
+  { office: "Timisoara",           country: "Romania",        region: "EMEA" },
+  { office: "Belgrade",            country: "Serbia",         region: "EMEA" },
+  { office: "Moscow",              country: "Russia",         region: "EMEA" },
+  { office: "Gothenburg",          country: "Sweden",         region: "EMEA" },
+  { office: "Malmoe",              country: "Sweden",         region: "EMEA" },
+  { office: "Stockholm",           country: "Sweden",         region: "EMEA" },
+  { office: "Ljubljana",           country: "Slovenia",       region: "EMEA" },
+  { office: "Bratislava",          country: "Slovakia",       region: "EMEA" },
+  { office: "Kosice",              country: "Slovakia",       region: "EMEA" },
+  { office: "Ankara",              country: "Turkey",         region: "MEE"  },
+  { office: "Istanbul",            country: "Turkey",         region: "MEE"  },
+  { office: "Izmir",               country: "Turkey",         region: "MEE"  },
+  { office: "Kyiv",                country: "Ukraine",        region: "EMEA" },
+  { office: "Belfast",             country: "United Kingdom", region: "EMEA" },
+  { office: "London",              country: "United Kingdom", region: "EMEA" },
+  { office: "Manchester",          country: "United Kingdom", region: "EMEA" },
+  { office: "Sittingbourne",       country: "United Kingdom", region: "EMEA" },
 ];
 
 const TIMEZONES = {
@@ -249,16 +380,47 @@ const TIMEZONES = {
   "New Zealand": "NZST (UTC+12)", "Indonesia": "WIB (UTC+7)",
   "Mexico": "CST (UTC-6)", "Colombia": "COT (UTC-5)", "Argentina": "ART (UTC-3)", "Chile": "CLT (UTC-3)",
   "Qatar": "AST (UTC+3)", "Kuwait": "AST (UTC+3)", "Bahrain": "AST (UTC+3)",
+  "Peru": "PET (UTC-5)", "Ecuador": "ECT (UTC-5)", "Venezuela": "VET (UTC-4)",
+  "Costa Rica": "CST (UTC-6)", "Panama": "EST (UTC-5)", "Puerto Rico": "AST (UTC-4)",
+  "Hong Kong": "HKT (UTC+8)", "Taiwan": "CST (UTC+8)",
+  "Angola": "WAT (UTC+1)", "Morocco": "WET (UTC+0)", "Pakistan": "PKT (UTC+5)",
+  "Oman": "GST (UTC+4)", "Iraq": "AST (UTC+3)",
+  "Azerbaijan": "AZT (UTC+4)", "Kazakhstan": "ALMT (UTC+6)",
+  "Ukraine": "EET (UTC+2)", "Serbia": "CET (UTC+1)", "Croatia": "CET (UTC+1)",
+  "Slovenia": "CET (UTC+1)", "Slovakia": "CET (UTC+1)", "Bulgaria": "EET (UTC+2)",
+  "Cyprus": "EET (UTC+2)", "Estonia": "EET (UTC+2)", "Latvia": "EET (UTC+2)",
+  "Lithuania": "EET (UTC+2)", "Luxembourg": "CET (UTC+1)",
+  "Russia": "MSK (UTC+3)",
 };
 
 const OFFICE_TIMEZONES = {
-  "Palo Alto": "PST (UTC-8)", "Seattle": "PST (UTC-8)",
-  "Vancouver": "PST (UTC-8)",
-  "New York": "EST (UTC-5)", "Boston": "EST (UTC-5)", "Atlanta": "EST (UTC-5)",
-  "Washington DC": "EST (UTC-5)", "Newtown Square": "EST (UTC-5)",
-  "Chicago": "CST (UTC-6)", "Dallas": "CST (UTC-6)",
-  "Toronto": "EST (UTC-5)", "Montreal": "EST (UTC-5)",
+  // Pacific (UTC-8)
+  "Palo Alto":       "PST (UTC-8)", "San Francisco":  "PST (UTC-8)",
+  "San Ramon":       "PST (UTC-8)", "San Diego":      "PST (UTC-8)",
+  "Newport Beach":   "PST (UTC-8)", "Bellevue":       "PST (UTC-8)",
+  "Vancouver":       "PST (UTC-8)",
+  // Mountain (UTC-7)
+  "Tempe":           "MST (UTC-7)", "Colorado Springs": "MST (UTC-7)",
+  // Central (UTC-6)
+  "Chicago":         "CST (UTC-6)", "Houston":        "CST (UTC-6)",
+  "Austin":          "CST (UTC-6)", "St Louis":       "CST (UTC-6)",
+  "Minneapolis":     "CST (UTC-6)", "La Crosse":      "CST (UTC-6)",
+  "Monterrey":       "CST (UTC-6)", "Mexico City":    "CST (UTC-6)",
+  // Eastern (UTC-5)
+  "New York":        "EST (UTC-5)", "Boston":         "EST (UTC-5)",
+  "Atlanta":         "EST (UTC-5)", "Alpharetta":     "EST (UTC-5)",
+  "Washington D.C.": "EST (UTC-5)", "Newtown Square": "EST (UTC-5)",
+  "Reston":          "EST (UTC-5)", "Pittsburgh":     "EST (UTC-5)",
+  "Raleigh":         "EST (UTC-5)", "Cincinnati":     "EST (UTC-5)",
+  "Indianapolis":    "EST (UTC-5)", "Birmingham":     "EST (UTC-5)",
+  "Miami":           "EST (UTC-5)", "Lake Mary":      "EST (UTC-5)",
+  "Toronto":         "EST (UTC-5)", "Montreal":       "EST (UTC-5)",
+  "Ottawa":          "EST (UTC-5)",
+  // Canada other
+  "Calgary":         "MST (UTC-7)", "Waterloo":       "EST (UTC-5)",
+  // Latin America
   "Ho Chi Minh City": "ICT (UTC+7)",
+  "San Juan":        "AST (UTC-4)",
 };
 
 function getTimezone(office, country) {
@@ -290,19 +452,51 @@ const COUNTRY_IANA = {
   "Mexico": "America/Mexico_City", "Colombia": "America/Bogota",
   "Argentina": "America/Argentina/Buenos_Aires", "Chile": "America/Santiago",
   "Qatar": "Asia/Qatar", "Kuwait": "Asia/Kuwait", "Bahrain": "Asia/Bahrain",
+  "Peru": "America/Lima", "Ecuador": "America/Guayaquil", "Venezuela": "America/Caracas",
+  "Costa Rica": "America/Costa_Rica", "Panama": "America/Panama",
+  "Puerto Rico": "America/Puerto_Rico",
+  "Hong Kong": "Asia/Hong_Kong", "Taiwan": "Asia/Taipei",
+  "Angola": "Africa/Luanda", "Morocco": "Africa/Casablanca",
+  "Pakistan": "Asia/Karachi", "Oman": "Asia/Muscat", "Iraq": "Asia/Baghdad",
+  "Azerbaijan": "Asia/Baku", "Kazakhstan": "Asia/Almaty",
+  "Ukraine": "Europe/Kiev", "Serbia": "Europe/Belgrade", "Croatia": "Europe/Zagreb",
+  "Slovenia": "Europe/Ljubljana", "Slovakia": "Europe/Bratislava",
+  "Bulgaria": "Europe/Sofia", "Cyprus": "Asia/Nicosia",
+  "Estonia": "Europe/Tallinn", "Latvia": "Europe/Riga", "Lithuania": "Europe/Vilnius",
+  "Luxembourg": "Europe/Luxembourg", "Russia": "Europe/Moscow",
 };
 
 const OFFICE_IANA = {
-  "Palo Alto": "America/Los_Angeles", "Seattle": "America/Los_Angeles",
-  "Vancouver": "America/Vancouver",
-  "Newtown Square": "America/New_York", "New York": "America/New_York",
-  "Boston": "America/New_York", "Atlanta": "America/New_York",
-  "Washington DC": "America/New_York",
-  "Chicago": "America/Chicago", "Dallas": "America/Chicago",
-  "Toronto": "America/Toronto", "Montreal": "America/Toronto",
+  // Pacific
+  "Palo Alto":       "America/Los_Angeles", "San Francisco":  "America/Los_Angeles",
+  "San Ramon":       "America/Los_Angeles", "San Diego":      "America/Los_Angeles",
+  "Newport Beach":   "America/Los_Angeles", "Bellevue":       "America/Los_Angeles",
+  "Vancouver":       "America/Vancouver",
+  // Mountain
+  "Tempe":           "America/Phoenix",     "Colorado Springs": "America/Denver",
+  // Central
+  "Chicago":         "America/Chicago",     "Houston":        "America/Chicago",
+  "Austin":          "America/Chicago",     "St Louis":       "America/Chicago",
+  "Minneapolis":     "America/Chicago",     "La Crosse":      "America/Chicago",
+  "Monterrey":       "America/Monterrey",   "Mexico City":    "America/Mexico_City",
+  // Eastern
+  "New York":        "America/New_York",    "Boston":         "America/New_York",
+  "Atlanta":         "America/New_York",    "Alpharetta":     "America/New_York",
+  "Washington D.C.": "America/New_York",    "Newtown Square": "America/New_York",
+  "Reston":          "America/New_York",    "Pittsburgh":     "America/New_York",
+  "Raleigh":         "America/New_York",    "Cincinnati":     "America/New_York",
+  "Indianapolis":    "America/Indiana/Indianapolis", "Birmingham": "America/New_York",
+  "Miami":           "America/New_York",    "Lake Mary":      "America/New_York",
+  "Toronto":         "America/Toronto",     "Montreal":       "America/Toronto",
+  "Ottawa":          "America/Toronto",
+  // Canada other
+  "Calgary":         "America/Edmonton",    "Waterloo":       "America/Toronto",
+  // Other overrides
   "Ho Chi Minh City": "Asia/Ho_Chi_Minh",
-  "Melbourne": "Australia/Melbourne",
-  "Auckland": "Pacific/Auckland",
+  "Melbourne":       "Australia/Melbourne", "Auckland":       "Pacific/Auckland",
+  "Wellington":      "Pacific/Auckland",    "San Juan":       "America/Puerto_Rico",
+  "Osaka":           "Asia/Tokyo",          "Nagoya":         "Asia/Tokyo",
+  "Oita":            "Asia/Tokyo",
 };
 function getIANA(office, country) {
   return OFFICE_IANA[office] || COUNTRY_IANA[country] || "UTC";
@@ -365,7 +559,7 @@ const INTEREST_CATEGORIES = [
 const INTEREST_POOL = INTEREST_CATEGORIES.flatMap(c => c.items);
 
 const ROLES = [
-  "STAR Student", "iXp Intern", "Academy Associate", "getX Early Talent", "Professional",
+  "STAR Student", "iXp Intern", "Academy Associate", "getX Early Talent", "Working Student", "Professional",
 ];
 
 const FIRST_NAMES = ["Maya", "Lucas", "Amara", "Felix", "Priya", "Noah", "Sofia", "Kenji",
@@ -494,6 +688,9 @@ function recalcBadges(user) {
 function getPriorMatchedUserIds(matches, userId) {
   const ids = new Set();
   matches.forEach((m) => {
+    // Exclude users from completed chats (both confirmed) AND active/pending matches.
+    // Only truly expired/removed matches allow re-matching.
+    if (m.status === "expired" || m.status === "removed") return;
     if (m.userAId === userId) ids.add(m.userBId);
     if (m.userBId === userId) ids.add(m.userAId);
   });
@@ -558,15 +755,7 @@ function todayStr() {
 /* ---------------------- Shared atoms ---------------------- */
 
 function useFonts() {
-  React.useEffect(() => {
-    const id = "cp-fonts";
-    if (document.getElementById(id)) return;
-    const link = document.createElement("link");
-    link.id = id;
-    link.rel = "stylesheet";
-    link.href = "https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap";
-    document.head.appendChild(link);
-  }, []);
+  // Fonts are loaded via @font-face in index.css — no external link needed.
 }
 
 function Pill({ children, color = "#002060", textColor = "#fff" }) {
@@ -692,7 +881,7 @@ function PanelHeader({ children, icon: Icon, right }) {
   return (
     <div className="flex items-center justify-between px-4 py-3 border-b shrink-0" style={{ borderColor: "#CFE6FA" }}>
       <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.14em]"
-        style={{ color: "#5A6472", fontFamily: "'IBM Plex Mono', monospace" }}>
+        style={{ color: "#5A6472", fontFamily: "'72Brand', sans-serif" }}>
         {Icon && <Icon size={13} />}{children}
       </div>
       {right}
@@ -743,7 +932,7 @@ function StampCard({ label, count, color, textColor, country, sublabel }) {
       </div>
       <div className="text-center">
         <div className="text-[10px] font-bold uppercase tracking-wide leading-tight"
-          style={{ color: textColor, fontFamily: "'IBM Plex Mono', monospace" }}>
+          style={{ color: textColor, fontFamily: "'72Brand', sans-serif" }}>
           {label}
         </div>
         {sublabel && (
@@ -752,7 +941,7 @@ function StampCard({ label, count, color, textColor, country, sublabel }) {
       </div>
       {count > 1 && (
         <div className="absolute -top-2 -right-2 w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold"
-          style={{ backgroundColor: "#DF1278", color: "#fff", fontFamily: "'IBM Plex Mono', monospace" }}>
+          style={{ backgroundColor: "#DF1278", color: "#fff", fontFamily: "'72Brand', sans-serif" }}>
           ×{count}
         </div>
       )}
@@ -808,7 +997,7 @@ function PassportPanel({ user }) {
       <div className="px-4 py-3 border-b flex items-center gap-3" style={{ borderColor: "#CFE6FA" }}>
         <Avatar name={user.name} email={user.email} size={40} />
         <div className="min-w-0">
-          <div className="font-semibold text-sm truncate" style={{ color: "#002060", fontFamily: "'Fraunces', serif" }}>
+          <div className="font-semibold text-sm truncate" style={{ color: "#002060", fontFamily: "'72Brand', sans-serif" }}>
             {user.name}
           </div>
           <div className="text-xs text-[#5A6472] truncate">{user.role}</div>
@@ -827,7 +1016,7 @@ function PassportPanel({ user }) {
           { label: "Offices", value: Object.keys(user.collectedOffices).length },
         ].map(s => (
           <div key={s.label} className="px-3 py-2 text-center border-r last:border-r-0" style={{ borderColor: "#CFE6FA" }}>
-            <div className="text-base font-semibold" style={{ fontFamily: "'Fraunces', serif", color: "#002060" }}>{s.value}</div>
+            <div className="text-base font-semibold" style={{ fontFamily: "'72Brand', sans-serif", color: "#002060" }}>{s.value}</div>
             <div className="text-[10px] text-[#7C8896]">{s.label}</div>
           </div>
         ))}
@@ -837,7 +1026,7 @@ function PassportPanel({ user }) {
       <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
         <div>
           <div className="text-[10px] uppercase tracking-widest text-[#7C8896] mb-2"
-            style={{ fontFamily: "'IBM Plex Mono', monospace" }}>Regions</div>
+            style={{ fontFamily: "'72Brand', sans-serif" }}>Regions</div>
           {regionEntries.length === 0
             ? <p className="text-xs text-[#7C8896]">No stamps yet</p>
             : <div className="flex flex-wrap gap-1.5">
@@ -851,7 +1040,7 @@ function PassportPanel({ user }) {
         </div>
         <div>
           <div className="text-[10px] uppercase tracking-widest text-[#7C8896] mb-2"
-            style={{ fontFamily: "'IBM Plex Mono', monospace" }}>Offices</div>
+            style={{ fontFamily: "'72Brand', sans-serif" }}>Offices</div>
           {officeEntries.length === 0
             ? <p className="text-xs text-[#7C8896]">No stamps yet</p>
             : <div className="flex flex-wrap gap-1.5">
@@ -865,7 +1054,7 @@ function PassportPanel({ user }) {
         <div>
           <div className="flex items-center justify-between mb-2">
             <div className="text-[10px] uppercase tracking-widest text-[#7C8896]"
-              style={{ fontFamily: "'IBM Plex Mono', monospace" }}>Badges</div>
+              style={{ fontFamily: "'72Brand', sans-serif" }}>Badges</div>
             <button
               onClick={() => setShowAllBadges(v => !v)}
               className="text-[10px] font-medium"
@@ -1014,54 +1203,10 @@ function MatchPanel({ users, matches, currentUser, onAccept, onReshuffle, reshuf
   const [spinKey, setSpinKey] = useState(0);
   const [leverActive, setLeverActive] = useState(false);
   const [leverShaking, setLeverShaking] = useState(false);
-  const [icebreaker, setIcebreaker] = useState(null);
-  const [icebreakerLoading, setIcebreakerLoading] = useState(false);
-  const [icebreakerError, setIcebreakerError] = useState(false);
   const limitReached = matchesLeft <= 0;
   const newRegion = suggestion && !currentUser.collectedRegions[suggestion.region];
   const newOffice  = suggestion && !currentUser.collectedOffices[suggestion.office];
   const used = MAX_MATCHES_PER_DAY - matchesLeft;
-
-  React.useEffect(() => {
-    if (!suggestion) { setIcebreaker(null); return; }
-    setIcebreaker(null);
-    setIcebreakerError(false);
-    setIcebreakerLoading(true);
-
-    const prompt = `You are generating a coffee chat icebreaker for SAP Next Gen. Generate ONE curious question (max 22 words) for someone meeting a ${suggestion.role} based in ${suggestion.office}, ${suggestion.country} (${suggestion.region} region). Their interests: ${suggestion.interests.join(", ")}. Weave their role and location together naturally. Also a 2-3 word tag like "Day-to-day", "Local insight", "Career path". Respond ONLY with valid JSON, no markdown: {"prompt":"...","tag":"..."}`;
-
-    fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": import.meta.env.VITE_ANTHROPIC_API_KEY || "",
-        "anthropic-version": "2023-06-01",
-        "anthropic-dangerous-direct-browser-access": "true",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-6",
-        max_tokens: 200,
-        messages: [{ role: "user", content: prompt }],
-      }),
-    })
-      .then(r => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json();
-      })
-      .then(data => {
-        const text = (data?.content || [])
-          .filter(b => b.type === "text")
-          .map(b => b.text)
-          .join("")
-          .replace(/```json|```/g, "")
-          .trim();
-        const parsed = JSON.parse(text);
-        if (parsed.prompt) setIcebreaker(parsed);
-        else throw new Error("bad shape");
-      })
-      .catch(() => setIcebreakerError(true))
-      .finally(() => setIcebreakerLoading(false));
-  }, [suggestion?.id]);
 
   function triggerSpin(newSuggestion) {
     setSpinning(true);
@@ -1144,7 +1289,7 @@ function MatchPanel({ users, matches, currentUser, onAccept, onReshuffle, reshuf
             style={{ borderColor: "#EAF5FF", backgroundColor: "#F5FAFF" }}>
             <Coffee size={13} color="#1B90FF" />
             <span className="text-xs font-semibold tracking-[0.18em] uppercase"
-              style={{ color: "#002060", fontFamily: "'IBM Plex Mono', monospace" }}>
+              style={{ color: "#002060", fontFamily: "'72Brand', sans-serif" }}>
               SAP Next Gen Matcher
             </span>
             <Coffee size={13} color="#1B90FF" />
@@ -1167,7 +1312,7 @@ function MatchPanel({ users, matches, currentUser, onAccept, onReshuffle, reshuf
                   style={{ backgroundColor: "#EAF5FF", border: "2px solid #89D1FF" }}>
                   <Check size={26} color="#1B90FF" />
                 </div>
-                <div className="text-sm font-semibold" style={{ color: "#002060", fontFamily: "'Fraunces', serif" }}>
+                <div className="text-sm font-semibold" style={{ color: "#002060", fontFamily: "'72Brand', sans-serif" }}>
                   You're all set for today
                 </div>
                 <div className="text-xs leading-relaxed" style={{ color: "#445063" }}>
@@ -1194,8 +1339,8 @@ function MatchPanel({ users, matches, currentUser, onAccept, onReshuffle, reshuf
                     <Avatar name={suggestion.name} email={suggestion.email} size={48} />
                     <div className="flex-1 min-w-0">
                       <div className="flex flex-wrap items-center gap-1.5 mb-0.5">
-                        <span className="font-semibold text-sm" style={{ color: "#002060", fontFamily: "'Fraunces', serif" }}>
-                          {suggestion.name}
+                        <span className="font-semibold text-sm" style={{ color: "#002060", fontFamily: "'72Brand', sans-serif" }}>
+                          {displayName(suggestion)}
                         </span>
                       </div>
                       <div className="text-xs text-[#5A6472] mb-2">{suggestion.role}</div>
@@ -1267,77 +1412,6 @@ function MatchPanel({ users, matches, currentUser, onAccept, onReshuffle, reshuf
           )}
         </div>
 
-        {/* AI Icebreaker */}
-        {suggestion && (
-          <div className="w-full rounded-2xl px-4 py-3"
-            style={{ backgroundColor: "#EAF5FF", border: "1px solid #CFE6FA", minHeight: 72 }}>
-            <div className="flex items-center justify-between mb-1.5">
-              <div className="flex items-center gap-1.5">
-                <Sparkles size={12} color="#1B90FF" />
-                <span className="text-[10px] font-semibold uppercase tracking-[0.14em]"
-                  style={{ color: "#1B90FF", fontFamily: "'IBM Plex Mono', monospace" }}>
-                  AI Icebreaker · {suggestion.role}
-                </span>
-              </div>
-              {!icebreakerLoading && icebreaker?.tag && (
-                <span className="text-[10px] rounded-full px-2 py-0.5"
-                  style={{ backgroundColor: "#D1EFFF", color: "#002060" }}>
-                  {icebreaker.tag}
-                </span>
-              )}
-            </div>
-            {icebreakerLoading ? (
-              <div className="flex items-center gap-2 py-1">
-                <div className="flex gap-1">
-                  {[0, 1, 2].map(i => (
-                    <div key={i} className="w-1.5 h-1.5 rounded-full"
-                      style={{ backgroundColor: "#1B90FF", opacity: 0.5,
-                        animation: `bounce 1s ease-in-out ${i * 0.18}s infinite alternate` }} />
-                  ))}
-                </div>
-                <span className="text-xs text-[#7C8896]">Generating for {suggestion.role} in {suggestion.office}…</span>
-              </div>
-            ) : icebreakerError ? (
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-[#DF1278]">
-                  {import.meta.env.VITE_ANTHROPIC_API_KEY ? "Couldn't reach AI — check your connection." : "AI icebreakers unavailable (no API key configured)."}
-                </span>
-                <button onClick={() => {
-                  setIcebreakerError(false);
-                  setIcebreakerLoading(true);
-                  const prompt = `Generate ONE coffee chat icebreaker question (max 22 words) for someone meeting a ${suggestion.role} in ${suggestion.office}, ${suggestion.country}. Respond ONLY with valid JSON: {"prompt":"...","tag":"..."}`;
-                  fetch("https://api.anthropic.com/v1/messages", {
-                    method: "POST",
-                    headers: {
-                      "Content-Type": "application/json",
-                      "x-api-key": import.meta.env.VITE_ANTHROPIC_API_KEY || "",
-                      "anthropic-version": "2023-06-01",
-                      "anthropic-dangerous-direct-browser-access": "true",
-                    },
-                    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 200, messages: [{ role: "user", content: prompt }] }),
-                  })
-                    .then(r => r.json())
-                    .then(data => {
-                      const text = (data?.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("").replace(/```json|```/g,"").trim();
-                      const p = JSON.parse(text);
-                      if (p.prompt) setIcebreaker(p); else throw new Error();
-                    })
-                    .catch(() => setIcebreakerError(true))
-                    .finally(() => setIcebreakerLoading(false));
-                }}
-                  className="text-xs font-medium rounded-full px-2.5 py-1"
-                  style={{ backgroundColor: "#1B90FF", color: "#fff" }}>
-                  Retry
-                </button>
-              </div>
-            ) : (
-              <p className="text-sm leading-snug" style={{ color: "#002060" }}>
-                {icebreaker?.prompt}
-              </p>
-            )}
-          </div>
-        )}
-
         {/* Coin tray label */}
         <div className="text-[10px] text-[#7C8896] font-mono tracking-wider uppercase text-center">
           Spin to reshuffle · Accept to match
@@ -1364,10 +1438,10 @@ function MatchesPanel({ matches, users, currentUser, onConfirm, onRemove, onAckn
   );
 
   function generateInvite(m, other, icebreaker) {
-    const myName = currentUser.name;
-    const theirName = other.name;
+    const myName = displayName(currentUser);
+    const theirName = displayName(other);
     const subject = `☕ Coffee Chat: ${myName} × ${theirName} | SAP Next Gen Connections Passport`;
-    const teamsLink = `https://teams.microsoft.com/l/meeting/new?subject=${encodeURIComponent(subject)}&attendees=${encodeURIComponent(other.name)}`;
+    const teamsLink = `https://teams.microsoft.com/l/meeting/new?subject=${encodeURIComponent(subject)}&attendees=${encodeURIComponent(other.email || other.name)}`;
     const body = `Hi ${theirName.split(" ")[0]},
 
 I'd love to connect for a quick coffee chat as part of the SAP Next Gen Connections Passport program! 🌍
@@ -1435,7 +1509,7 @@ ${myName}
           <Avatar name={other.name} email={other.email} size={32} />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-xs font-medium truncate" style={{ color: "#002060" }}>{other.name}</span>
+              <span className="text-xs font-medium truncate" style={{ color: "#002060" }}>{displayName(other)}</span>
             </div>
             <div className="text-[10px] mt-0.5" style={{ color: isUrgent ? "#DF1278" : "#7C8896" }}>
               {other.office}
@@ -1473,13 +1547,13 @@ ${myName}
                   {m.status === "pending_confirmation" && <>
                     <div className="font-semibold mb-1.5 text-[#DF1278]">Pending confirmation</div>
                     <p>{myConfirmed
-                      ? `You've confirmed — waiting for ${other.name.split(" ")[0]} to do the same. Once they confirm, you'll both earn a passport stamp!`
-                      : `${other.name.split(" ")[0]} has confirmed your chat. Click "We met" to confirm on your end and unlock your passport stamp!`
+                      ? `You've confirmed — waiting for ${displayName(other).split(" ")[0]} to do the same. Once they confirm, you'll both earn a passport stamp!`
+                      : `${displayName(other).split(" ")[0]} has confirmed your chat. Click "We met" to confirm on your end and unlock your passport stamp!`
                     }</p>
                   </>}
                   {m.status === "completed" && <>
                     <div className="font-semibold mb-1.5" style={{ color: "#89D1FF" }}>🎉 Chat completed!</div>
-                    <p>Congratulations — you and {other.name.split(" ")[0]} both confirmed this chat. Check your passport for your new stamp from <span className="font-semibold">{other.office}</span>!</p>
+                    <p>Congratulations — you and {displayName(other).split(" ")[0]} both confirmed this chat. Check your passport for your new stamp from <span className="font-semibold">{other.office}</span>!</p>
                   </>}
                   {m.status === "expired" && <>
                     <div className="font-semibold mb-1.5 text-[#7C8896]">Match expired</div>
@@ -1546,7 +1620,7 @@ ${myName}
             style={{ backgroundColor: "#F5FAFF", border: "1px solid #CFE6FA" }}>
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-semibold uppercase tracking-widest text-[#445063]"
-                style={{ fontFamily: "'IBM Plex Mono', monospace" }}>
+                style={{ fontFamily: "'72Brand', sans-serif" }}>
                 Timezone overlap
               </span>
               <button onClick={() => setTzOpenId(null)} style={{ color: "#7C8896" }}><X size={11} /></button>
@@ -1561,7 +1635,7 @@ ${myName}
                 <div key={p.label} className="rounded-lg p-2.5 text-center"
                   style={{ backgroundColor: "#fff", border: `1px solid ${p.color}22` }}>
                   <div className="text-[9px] text-[#7C8896] mb-0.5">{p.label} · {p.name}</div>
-                  <div className="text-base font-semibold" style={{ color: p.color, fontFamily: "'Fraunces', serif" }}>
+                  <div className="text-base font-semibold" style={{ color: p.color, fontFamily: "'72Brand', sans-serif" }}>
                     {p.timeStr}
                   </div>
                   <div className="text-[9px] text-[#7C8896] mt-0.5">{p.tz}</div>
@@ -1594,7 +1668,7 @@ ${myName}
                 {[
                   { color: "#1B90FF", label: "Ideal time (both)" },
                   { color: "#89D1FF", label: "Your friendly hours" },
-                  { color: "#FFB3D1", label: `${other.name.split(" ")[0]}'s friendly hours` },
+                  { color: "#FFB3D1", label: `${displayName(other).split(" ")[0]}'s friendly hours` },
                   { color: "#EAF5FF", label: "Outside friendly hours", border: true },
                 ].map(s => (
                   <div key={s.label} className="flex items-center gap-1">
@@ -1615,7 +1689,7 @@ ${myName}
                 style={{ backgroundColor: "#F5FAFF", border: "1px solid #CFE6FA" }}>
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-semibold uppercase tracking-widest text-[#445063]"
-                    style={{ fontFamily: "'IBM Plex Mono', monospace" }}>
+                    style={{ fontFamily: "'72Brand', sans-serif" }}>
                     Meeting invite
                   </span>
                   <button onClick={() => setShowInvite(false)} style={{ color: "#7C8896" }}><X size={11} /></button>
@@ -1671,7 +1745,7 @@ ${myName}
                 style={{ backgroundColor: "#F5FAFF", border: "1px solid #CFE6FA" }}>
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] font-semibold uppercase tracking-widest text-[#445063]"
-                    style={{ fontFamily: "'IBM Plex Mono', monospace" }}>
+                    style={{ fontFamily: "'72Brand', sans-serif" }}>
                     📝 Your private notes
                   </span>
                   {noteText && !notesOpen && (
@@ -1687,7 +1761,7 @@ ${myName}
                     <textarea
                       value={noteText}
                       onChange={e => setNoteText(e.target.value)}
-                      placeholder={`What did you talk about with ${other.name.split(" ")[0]}? Any follow-up ideas or resources to share?`}
+                      placeholder={`What did you talk about with ${displayName(other).split(" ")[0]}? Any follow-up ideas or resources to share?`}
                       className="w-full rounded-lg px-3 py-2 text-xs resize-none outline-none"
                       style={{ backgroundColor: "#fff", border: "1px solid #EAF5FF", color: "#002060", minHeight: 80 }}
                     />
@@ -1727,10 +1801,15 @@ ${myName}
 
       <div className="flex-1 overflow-y-auto px-2 pt-2 pb-3 space-y-2">
         {myMatches.length === 0 ? (
-          <div className="mt-6 p-6 text-center rounded-2xl mx-1"
-            style={{ backgroundColor: "#F5FAFF", border: "1.5px dashed #CFE6FA" }}>
-            <Coffee size={24} className="mx-auto mb-2" color="#7C8896" />
-            <p className="text-xs text-[#7C8896]">No matches yet — accept one to start.</p>
+          <div className="mt-8 px-5 text-center">
+            <div className="w-10 h-10 rounded-full flex items-center justify-center mx-auto mb-3"
+              style={{ backgroundColor: "#F5FAFF", border: "1.5px dashed #CFE6FA" }}>
+              <Coffee size={18} color="#CFE6FA" />
+            </div>
+            <p className="text-xs font-medium mb-1" style={{ color: "#7C8896" }}>No matches yet</p>
+            <p className="text-[10px] leading-relaxed" style={{ color: "#B0BFCC" }}>
+              Accept a match on the left to get started. It will appear here once sent.
+            </p>
           </div>
         ) : groups.map(g => {
           const inGroup = myMatches.filter(m => m.status === g.key);
@@ -1741,7 +1820,7 @@ ${myName}
               <div className="flex items-center gap-2 px-2 py-1.5 mb-1">
                 <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: g.color }} />
                 <span className="text-[10px] font-semibold uppercase tracking-widest"
-                  style={{ color: g.color, fontFamily: "'IBM Plex Mono', monospace" }}>
+                  style={{ color: g.color, fontFamily: "'72Brand', sans-serif" }}>
                   {g.label}
                 </span>
                 <span className="text-[10px] text-[#7C8896]">({inGroup.length})</span>
@@ -1759,6 +1838,7 @@ ${myName}
 
 function PassportPage({ user }) {
   const [showAllBadges, setShowAllBadges] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
   const collectedRegions = (user.collectedRegions && typeof user.collectedRegions === "object" && !Array.isArray(user.collectedRegions))
     ? user.collectedRegions : {};
   const collectedOffices = (user.collectedOffices && typeof user.collectedOffices === "object" && !Array.isArray(user.collectedOffices))
@@ -1766,6 +1846,29 @@ function PassportPage({ user }) {
   const regionEntries = Object.entries(collectedRegions).map(([k, v]) => [k, Number(v) || 0]);
   const officeEntries = Object.entries(collectedOffices).map(([k, v]) => [k, Number(v) || 0]);
   const totalStamps = regionEntries.reduce((s,[,c])=>s+c,0) + officeEntries.reduce((s,[,c])=>s+c,0);
+
+  function handleShare() {
+    const regionList = regionEntries.map(([r]) => r).join(", ") || "none yet";
+    const badgeList = Array.isArray(user.badges) && user.badges.length
+      ? user.badges.join(", ") : "none yet";
+    const text =
+`☕ SAP Next Gen Connections Passport — ${displayName(user)}
+${user.role} · ${user.office}
+
+📊 My stats:
+  Chats completed: ${user.chatsCompleted || 0}
+  Regions collected: ${regionEntries.length}/${REGIONS.length} (${regionList})
+  Office stamps: ${officeEntries.length}
+  Badges: ${Array.isArray(user.badges) ? user.badges.length : 0}
+
+🏅 Badges earned: ${badgeList}
+
+Collecting global connections at SAP Next Gen! 🌍`;
+    navigator.clipboard.writeText(text).then(() => {
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 2500);
+    }).catch(() => {});
+  }
 
   return (
     <div className="flex-1 overflow-y-auto" style={{ backgroundColor: "#EAF5FF" }}>
@@ -1776,24 +1879,35 @@ function PassportPage({ user }) {
           background: "linear-gradient(135deg, #001642 0%, #002060 55%, #0A3D8F 100%)",
           boxShadow: "0 8px 40px rgba(0,32,96,0.3)",
         }}>
-          <div className="px-8 py-6 flex items-center justify-between">
+          <div className="px-8 py-6 flex items-start justify-between">
             <div>
               <div className="text-xs tracking-[0.2em] uppercase mb-2 font-medium"
-                style={{ color: "#89D1FF", fontFamily: "'IBM Plex Mono', monospace" }}>
+                style={{ color: "#89D1FF", fontFamily: "'72Brand', sans-serif" }}>
                 SAP Next Gen · Digital Passport
               </div>
               <div className="text-2xl font-semibold text-white mb-1"
-                style={{ fontFamily: "'Fraunces', serif" }}>
-                {user.name}
+                style={{ fontFamily: "'72Brand', sans-serif" }}>
+                {displayName(user)}
               </div>
               <div className="text-sm text-white">{user.role} · {user.office}</div>
             </div>
-            <div className="flex flex-col items-center gap-2">
+            <div className="flex flex-col items-center gap-3">
               <div className="w-16 h-16 rounded-2xl flex items-center justify-center"
                 style={{ backgroundColor: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)" }}>
                 <span style={{ fontSize: 36, lineHeight: 1 }}>{COUNTRY_EMOJI[user.country] || "🌐"}</span>
               </div>
               <div className="text-[10px] font-mono text-white opacity-80">{user.country}</div>
+              <button
+                onClick={handleShare}
+                className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-all active:scale-95"
+                style={{
+                  backgroundColor: shareCopied ? "rgba(27,200,100,0.25)" : "rgba(255,255,255,0.12)",
+                  color: shareCopied ? "#5DFFA0" : "#fff",
+                  border: `1px solid ${shareCopied ? "rgba(93,255,160,0.4)" : "rgba(255,255,255,0.2)"}`,
+                }}>
+                {shareCopied ? <Check size={12} /> : <Share2 size={12} />}
+                {shareCopied ? "Copied!" : "Share"}
+              </button>
             </div>
           </div>
           {/* Stats strip */}
@@ -1806,7 +1920,7 @@ function PassportPage({ user }) {
             ].map(s => (
               <div key={s.label} className="px-4 py-3 text-center border-r last:border-r-0"
                 style={{ borderColor: "rgba(255,255,255,0.08)" }}>
-                <div className="text-xl font-semibold text-white" style={{ fontFamily: "'Fraunces', serif" }}>{s.value}</div>
+                <div className="text-xl font-semibold text-white" style={{ fontFamily: "'72Brand', sans-serif" }}>{s.value}</div>
                 <div className="text-[10px] text-white opacity-60">{s.label}</div>
               </div>
             ))}
@@ -1844,7 +1958,7 @@ function PassportPage({ user }) {
                   style={{ minWidth: 90, minHeight: 110, border: "2px dashed #CFE6FA", opacity: 0.4 }}>
                   <Globe2 size={24} color="#7C8896" />
                   <div className="text-[10px] text-[#7C8896] text-center uppercase tracking-wide"
-                    style={{ fontFamily: "'IBM Plex Mono', monospace" }}>{r}</div>
+                    style={{ fontFamily: "'72Brand', sans-serif" }}>{r}</div>
                 </div>
               ))}
             </div>
@@ -1972,6 +2086,7 @@ function SignupPage({ onComplete, users, editMode = false, initialData = null, o
 
   const [form, setForm] = useState(initialData || {
     name: ssoDefaults.name || "",
+    preferredName: "",
     role: ROLES[0],
     office: ssoDefaults.office || OFFICES[0].office,
     country: ssoDefaults.country || OFFICES[0].country,
@@ -2022,7 +2137,7 @@ function SignupPage({ onComplete, users, editMode = false, initialData = null, o
             <Coffee size={26} color="#DF1278" />
           </div>
           <h1 className="text-3xl font-semibold text-[#002060] mb-2"
-            style={{ fontFamily: "'Fraunces', serif" }}>
+            style={{ fontFamily: "'72Brand', sans-serif" }}>
             {editMode ? "Edit your profile" : "Apply to Connections Passport"}
           </h1>
           <p className="text-sm text-[#445063]">
@@ -2036,7 +2151,7 @@ function SignupPage({ onComplete, users, editMode = false, initialData = null, o
         {!editMode && (
           <div className="rounded-2xl p-5 mb-6" style={{ backgroundColor: "#002060" }}>
             <div className="text-xs font-semibold uppercase tracking-widest text-[#89D1FF] mb-3"
-              style={{ fontFamily: "'IBM Plex Mono', monospace" }}>
+              style={{ fontFamily: "'72Brand', sans-serif" }}>
               What's in it for you
             </div>
             <div className="space-y-2.5 text-xs text-white">
@@ -2074,7 +2189,7 @@ function SignupPage({ onComplete, users, editMode = false, initialData = null, o
 
             {/* Community Guidelines + Privacy — single card */}
             <div className="rounded-2xl bg-white p-6 space-y-5" style={{ border: "1px solid #CFE6FA" }}>
-              <h2 className="font-semibold text-[#002060]" style={{ fontFamily: "'Fraunces', serif" }}>
+              <h2 className="font-semibold text-[#002060]" style={{ fontFamily: "'72Brand', sans-serif" }}>
                 Community Guidelines
               </h2>
               <div className="grid grid-cols-2 gap-3">
@@ -2144,7 +2259,7 @@ function SignupPage({ onComplete, users, editMode = false, initialData = null, o
                 <div className="rounded-2xl bg-white w-full max-w-lg p-6 space-y-4 overflow-y-auto"
                   style={{ maxHeight: "80vh", boxShadow: "0 24px 64px rgba(0,0,0,0.3)" }}>
                   <div className="flex items-center justify-between">
-                    <h3 className="font-semibold text-[#002060]" style={{ fontFamily: "'Fraunces', serif" }}>
+                    <h3 className="font-semibold text-[#002060]" style={{ fontFamily: "'72Brand', sans-serif" }}>
                       Privacy &amp; Data Notice
                     </h3>
                     <button onClick={() => setShowPrivacyModal(false)} style={{ color: "#7C8896" }}>
@@ -2198,7 +2313,7 @@ function SignupPage({ onComplete, users, editMode = false, initialData = null, o
                 <div className="rounded-2xl bg-white w-full max-w-md p-6 space-y-4"
                   style={{ boxShadow: "0 24px 64px rgba(0,0,0,0.3)" }}>
                   <div className="flex items-center justify-between">
-                    <h3 className="font-semibold text-[#002060]" style={{ fontFamily: "'Fraunces', serif" }}>
+                    <h3 className="font-semibold text-[#002060]" style={{ fontFamily: "'72Brand', sans-serif" }}>
                       Report an Issue
                     </h3>
                     <button onClick={() => { setShowReportModal(false); setReportCopied(false); }}
@@ -2248,7 +2363,7 @@ Thank you.`}
         {step === 1 && (
           <div className="space-y-4">
           <div className="rounded-2xl bg-white p-6 space-y-5" style={{ border: "1px solid #CFE6FA" }}>
-            <h2 className="font-semibold text-[#002060]" style={{ fontFamily: "'Fraunces', serif" }}>
+            <h2 className="font-semibold text-[#002060]" style={{ fontFamily: "'72Brand', sans-serif" }}>
               Tell us about yourself
             </h2>
 
@@ -2268,6 +2383,19 @@ Thank you.`}
             </div>
 
             <div>
+              <label className="text-xs font-semibold text-[#002060] block mb-1">
+                Preferred first name <span className="font-normal text-[#7C8896]">(optional)</span>
+              </label>
+              <input value={form.preferredName || ""} onChange={e => update("preferredName", e.target.value)}
+                placeholder={`e.g. ${(form.name || "Jordan").split(" ")[0]}`}
+                className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-200"
+                style={{ borderColor: "#CFE6FA" }} />
+              <p className="text-[11px] text-[#7C8896] mt-1">
+                This is the name others will see on your match card and passport.
+              </p>
+            </div>
+
+            <div>
               <label className="text-xs font-semibold text-[#002060] block mb-1">Role / Program</label>
               <select value={form.role} onChange={e => update("role", e.target.value)}
                 className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
@@ -2281,7 +2409,7 @@ Thank you.`}
               <select value={form.office} onChange={e => update("office", e.target.value)}
                 className="w-full rounded-xl border px-3 py-2.5 text-sm outline-none"
                 style={{ borderColor: "#CFE6FA" }}>
-                {OFFICES.map(o => <option key={o.office}>{o.office}</option>)}
+                {[...OFFICES].sort((a, b) => a.office.localeCompare(b.office)).map(o => <option key={o.office}>{o.office}</option>)}
               </select>
               <div className="flex items-center gap-2 mt-1.5 text-[11px] text-[#7C8896]">
                 <span>{COUNTRY_EMOJI[form.country] || "🌐"}</span>
@@ -2304,7 +2432,7 @@ Thank you.`}
           {/* Account settings — edit mode only */}
           {editMode && onPause && onDelete && (
             <div className="rounded-2xl bg-white p-6 space-y-4" style={{ border: "1px solid #CFE6FA" }}>
-              <h3 className="font-semibold text-[#002060] text-sm" style={{ fontFamily: "'Fraunces', serif" }}>
+              <h3 className="font-semibold text-[#002060] text-sm" style={{ fontFamily: "'72Brand', sans-serif" }}>
                 Account Settings
               </h3>
 
@@ -2356,7 +2484,7 @@ Thank you.`}
                     style={{ backgroundColor: "#FFF0F5" }}>
                     <X size={18} color="#DF1278" />
                   </div>
-                  <h3 className="font-semibold text-[#002060]" style={{ fontFamily: "'Fraunces', serif" }}>
+                  <h3 className="font-semibold text-[#002060]" style={{ fontFamily: "'72Brand', sans-serif" }}>
                     Delete your account?
                   </h3>
                 </div>
@@ -2390,7 +2518,7 @@ Thank you.`}
         {step === 2 && (
           <div className="space-y-5">
             <div className="rounded-2xl bg-white p-6" style={{ border: "1px solid #CFE6FA" }}>
-              <h2 className="font-semibold text-[#002060] mb-1" style={{ fontFamily: "'Fraunces', serif" }}>
+              <h2 className="font-semibold text-[#002060] mb-1" style={{ fontFamily: "'72Brand', sans-serif" }}>
                 {editMode ? "Update your interests" : "Pick your interests"}
               </h2>
               <p className="text-xs text-[#7C8896] mb-5">
@@ -2406,7 +2534,7 @@ Thank you.`}
                     <div className="flex items-center gap-2 mb-2.5">
                       <span className="text-base">{cat.emoji}</span>
                       <span className="text-xs font-semibold uppercase tracking-widest text-[#7C8896]"
-                        style={{ fontFamily: "'IBM Plex Mono', monospace" }}>
+                        style={{ fontFamily: "'72Brand', sans-serif" }}>
                         {cat.label}
                       </span>
                     </div>
@@ -2436,7 +2564,7 @@ Thank you.`}
                   <div className="flex items-center gap-2 mb-2.5">
                     <span className="text-base">✏️</span>
                     <span className="text-xs font-semibold uppercase tracking-widest text-[#7C8896]"
-                      style={{ fontFamily: "'IBM Plex Mono', monospace" }}>
+                      style={{ fontFamily: "'72Brand', sans-serif" }}>
                       Other
                     </span>
                   </div>
@@ -2490,7 +2618,7 @@ Thank you.`}
         {step === 3 && (
           <div className="space-y-4">
             <div className="rounded-2xl bg-white p-6" style={{ border: "1px solid #CFE6FA" }}>
-              <h2 className="font-semibold text-[#002060] mb-4" style={{ fontFamily: "'Fraunces', serif" }}>
+              <h2 className="font-semibold text-[#002060] mb-4" style={{ fontFamily: "'72Brand', sans-serif" }}>
                 {editMode ? "Review your changes" : "Review your profile"}
               </h2>
 
@@ -2500,8 +2628,11 @@ Thank you.`}
                   {form.name.split(" ").map(p => p[0]).slice(0,2).join("")}
                 </div>
                 <div>
-                  <div className="font-semibold text-[#002060]" style={{ fontFamily: "'Fraunces', serif" }}>
-                    {form.name}
+                  <div className="font-semibold text-[#002060]" style={{ fontFamily: "'72Brand', sans-serif" }}>
+                    {form.preferredName && form.preferredName.trim() ? form.preferredName.trim() : form.name}
+                    {form.preferredName && form.preferredName.trim() && (
+                      <span className="ml-2 text-[10px] font-normal text-[#7C8896]">({form.name})</span>
+                    )}
                   </div>
                   <div className="text-sm text-[#445063]">{form.role}</div>
                   <div className="flex items-center gap-2 mt-1 text-xs text-[#7C8896]">
@@ -2539,7 +2670,7 @@ Thank you.`}
               <button onClick={() => onComplete(form)}
                 className="flex-1 rounded-xl py-3 font-semibold text-sm flex items-center justify-center gap-2"
                 style={{ backgroundColor: "#DF1278", color: "#fff", boxShadow: "0 4px 14px rgba(223,18,120,0.35)" }}>
-                {editMode ? <><Check size={15} /> Save changes</> : <><Coffee size={15} /> Join now</>}
+                {editMode ? <><Check size={15} /> Save changes</> : <><Coffee size={15} /> Apply for a Connections Passport</>}
               </button>
             </div>
           </div>
@@ -2554,184 +2685,140 @@ Thank you.`}
 function LandingPage({ onJoin, ssoUser }) {
   return (
     <div className="flex-1 overflow-y-auto" style={{ backgroundColor: "#EAF5FF" }}>
-      <div className="max-w-3xl mx-auto px-6 py-12 space-y-12">
+      <div className="max-w-2xl mx-auto px-6 py-16 space-y-14">
 
         {/* Hero */}
-        <div className="text-center space-y-4">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-2"
+        <div className="text-center space-y-6">
+          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl mb-1"
             style={{ backgroundColor: "#002060" }}>
-            <Coffee size={30} color="#DF1278" />
+            <Coffee size={26} color="#DF1278" />
           </div>
-          <h1 className="text-4xl font-semibold text-[#002060]"
-            style={{ fontFamily: "'Fraunces', serif", lineHeight: 1.15 }}>
+          <h1 className="text-4xl font-semibold text-[#002060] leading-tight"
+            style={{ fontFamily: "'72Brand', sans-serif" }}>
             Meet your next colleague.<br />Anywhere in the world.
           </h1>
-          <p className="text-base text-[#445063] max-w-xl mx-auto leading-relaxed">
-            Connections Passport matches SAP Next Gen talent across global offices for 30-minute coffee chats. Collect stamps, earn badges, and build a network that spans the globe.
+          <p className="text-base leading-relaxed max-w-md mx-auto" style={{ color: "#445063" }}>
+            30-minute coffee chats with SAP Next Gen talent across every office and region. Collect stamps, earn badges, grow your global network.
           </p>
-          {/* [SSO-INTEGRATION-POINT] Replace onClick with BTP XSUAA redirect when deployed */}
           {ssoUser ? (
-            <div className="inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-medium mt-2"
-              style={{ backgroundColor: "#EAF5FF", color: "#002060", border: "1px solid #CFE6FA" }}>
+            <div className="inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-medium"
+              style={{ backgroundColor: "#fff", color: "#002060", border: "1px solid #CFE6FA", boxShadow: "0 2px 8px rgba(0,32,96,0.08)" }}>
               <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />
-              Signed in as {ssoUser.name} · <button onClick={onJoin} className="font-semibold" style={{ color: "#DF1278" }}>Apply now →</button>
+              Signed in as {ssoUser.name} ·{" "}
+              <button onClick={onJoin} className="font-semibold" style={{ color: "#DF1278" }}>Apply for a Connections Passport →</button>
             </div>
           ) : (
             <button onClick={onJoin}
-              className="inline-flex items-center gap-2 rounded-full px-8 py-3.5 font-semibold text-sm mt-2"
+              className="inline-flex items-center gap-2 rounded-full px-8 py-3.5 font-semibold text-sm"
               style={{ backgroundColor: "#DF1278", color: "#fff", boxShadow: "0 4px 18px rgba(223,18,120,0.35)" }}>
               <LogIn size={16} /> Sign in with SAP
             </button>
           )}
         </div>
 
-        {/* What's in it for me */}
+        {/* How it works — 3 steps */}
         <div>
           <div className="text-center mb-6">
-            <span className="text-xs font-semibold uppercase tracking-widest text-[#7C8896]"
-              style={{ fontFamily: "'IBM Plex Mono', monospace" }}>
+            <span className="text-xs font-semibold uppercase tracking-widest"
+              style={{ color: "#7C8896", fontFamily: "'72Brand', sans-serif" }}>
               How it works
             </span>
           </div>
           <div className="grid grid-cols-3 gap-4">
             {[
-              { emoji: "🎰", step: "01", title: "Get matched", body: "Spin the matcher to find someone new. Every match is a different office or region." },
-              { emoji: "☕", step: "02", title: "Have a chat", body: "Schedule a 30-min coffee chat. An AI icebreaker helps you kick things off." },
-              { emoji: "🎖️", step: "03", title: "Earn stamps", body: "Both confirm the chat happened and earn a passport stamp. Collect them all." },
+              { emoji: "🎰", step: "01", title: "Get matched", body: "Spin the matcher to find someone new from a different office or region." },
+              { emoji: "☕", step: "02", title: "Have a chat", body: "Schedule 30 minutes over Teams or in person. Use the built-in invite tool." },
+              { emoji: "🎖️", step: "03", title: "Earn stamps", body: "Both confirm the chat and earn a passport stamp. Collect them all." },
             ].map(({ emoji, step, title, body }) => (
               <div key={step} className="rounded-2xl p-5 text-center space-y-2"
-                style={{ backgroundColor: "#fff", border: "1px solid #CFE6FA" }}>
-                <div className="text-3xl">{emoji}</div>
-                <div className="text-xs font-bold" style={{ color: "#DF1278", fontFamily: "'IBM Plex Mono', monospace" }}>{step}</div>
-                <div className="font-semibold text-sm text-[#002060]">{title}</div>
-                <p className="text-xs text-[#445063] leading-relaxed">{body}</p>
+                style={{ backgroundColor: "#fff", border: "1px solid #CFE6FA", boxShadow: "0 2px 8px rgba(0,32,96,0.04)" }}>
+                <div className="text-2xl mb-1">{emoji}</div>
+                <div className="text-[10px] font-bold tracking-widest uppercase"
+                  style={{ color: "#DF1278", fontFamily: "'72Brand', sans-serif" }}>{step}</div>
+                <div className="font-semibold text-sm" style={{ color: "#002060" }}>{title}</div>
+                <p className="text-xs leading-relaxed" style={{ color: "#5A6472" }}>{body}</p>
               </div>
             ))}
           </div>
         </div>
 
-        {/* Passport stamps preview */}
-        <div>
-          <h2 className="text-xl font-semibold text-[#002060] text-center mb-4"
-            style={{ fontFamily: "'Fraunces', serif" }}>
-            Collect passport stamps
-          </h2>
-          <div className="rounded-2xl overflow-hidden"
-            style={{ background: "linear-gradient(135deg, #001642 0%, #002060 60%, #0A3D8F 100%)", boxShadow: "0 8px 32px rgba(0,32,96,0.2)" }}>
-            <div className="px-6 py-4 border-b" style={{ borderColor: "rgba(255,255,255,0.08)" }}>
-              <div className="text-[10px] tracking-[0.2em] uppercase font-medium mb-1"
-                style={{ color: "#89D1FF", fontFamily: "'IBM Plex Mono', monospace" }}>
+        {/* What you collect — compact visual */}
+        <div className="rounded-2xl overflow-hidden"
+          style={{ background: "linear-gradient(135deg, #001642 0%, #002060 60%, #0A3D8F 100%)", boxShadow: "0 8px 32px rgba(0,32,96,0.2)" }}>
+          <div className="px-7 py-6 flex items-center justify-between border-b" style={{ borderColor: "rgba(255,255,255,0.08)" }}>
+            <div>
+              <div className="text-[10px] tracking-[0.2em] uppercase font-medium mb-1.5"
+                style={{ color: "#89D1FF", fontFamily: "'72Brand', sans-serif" }}>
                 SAP Next Gen · Digital Passport
               </div>
-              <div className="text-lg font-semibold text-white" style={{ fontFamily: "'Fraunces', serif" }}>Your Name Here</div>
-              <div className="text-xs text-white opacity-60">iXp Intern · Berlin</div>
-            </div>
-            <div className="px-6 py-5 space-y-5">
-              {/* Region stamps */}
-              <div>
-                <div className="text-[10px] uppercase tracking-widest mb-3"
-                  style={{ color: "rgba(137,209,255,0.6)", fontFamily: "'IBM Plex Mono', monospace" }}>Regions</div>
-                <div className="flex flex-wrap gap-3">
-                  {[
-                    { label: "EMEA", bg: "#1B90FF", text: "#fff", count: 3 },
-                    { label: "APAC", bg: "#89D1FF", text: "#002060", count: 2 },
-                    { label: "NA",   bg: "#DF1278", text: "#fff", count: 1 },
-                  ].map(r => (
-                    <div key={r.label} className="flex flex-col items-center justify-between rounded-xl p-3 gap-2"
-                      style={{ backgroundColor: r.bg, minWidth: 80, minHeight: 90,
-                        transform: `rotate(${r.label === "EMEA" ? -2 : r.label === "APAC" ? 1 : -3}deg)`,
-                        border: "2px double rgba(255,255,255,0.3)", boxShadow: "0 2px 8px rgba(0,32,96,0.25)" }}>
-                      <Globe2 size={22} color={r.text} opacity={0.8} />
-                      <div className="text-center">
-                        <div className="text-[10px] font-bold uppercase tracking-wide"
-                          style={{ color: r.text, fontFamily: "'IBM Plex Mono', monospace" }}>{r.label}</div>
-                        <div className="text-[9px] opacity-70" style={{ color: r.text }}>{r.count} chat{r.count > 1 ? "s" : ""}</div>
-                      </div>
-                    </div>
-                  ))}
-                  {/* Ghost stamp */}
-                  <div className="flex flex-col items-center justify-center rounded-xl p-3 gap-2"
-                    style={{ minWidth: 80, minHeight: 90, border: "2px dashed rgba(255,255,255,0.15)", opacity: 0.35 }}>
-                    <Globe2 size={22} color="#89D1FF" />
-                    <div className="text-[10px] uppercase tracking-wide text-center"
-                      style={{ color: "#89D1FF", fontFamily: "'IBM Plex Mono', monospace" }}>MEE</div>
-                  </div>
-                </div>
+              <div className="text-xl font-semibold text-white" style={{ fontFamily: "'72Brand', sans-serif" }}>
+                Your Name Here
               </div>
-              {/* Office stamps */}
-              <div>
-                <div className="text-[10px] uppercase tracking-widest mb-3"
-                  style={{ color: "rgba(137,209,255,0.6)", fontFamily: "'IBM Plex Mono', monospace" }}>Offices</div>
-                <div className="flex flex-wrap gap-3">
-                  {[
-                    { label: "Walldorf",       country: "Germany",        count: 2 },
-                    { label: "Singapore",       country: "Singapore",      count: 1 },
-                    { label: "Palo Alto",       country: "United States",  count: 1 },
-                    { label: "Newtown Square",  country: "United States",  count: 1 },
-                    { label: "Tokyo",           country: "Japan",          count: 1 },
-                    { label: "Dublin",          country: "Ireland",        count: 1 },
-                    { label: "Sydney",          country: "Australia",      count: 2 },
-                    { label: "São Paulo",       country: "Brazil",         count: 1 },
-                    { label: "Dubai",           country: "UAE",            count: 1 },
-                    { label: "London",          country: "United Kingdom", count: 1 },
-                    { label: "Bangalore",       country: "India",          count: 1 },
-                    { label: "Vancouver",       country: "Canada",         count: 1 },
-                  ].map((o, i) => (
-                    <div key={o.label} className="flex flex-col items-center justify-between rounded-xl p-3 gap-2"
-                      style={{ backgroundColor: "#002060", minWidth: 80, minHeight: 90,
-                        transform: `rotate(${[-2, 1, 3, -1, 2, -3, 1, -2, 3, -1, 2, -3][i % 12]}deg)`,
-                        border: "2px double rgba(255,255,255,0.15)", boxShadow: "0 2px 8px rgba(0,32,96,0.25)" }}>
-                      <span style={{ fontSize: 26, lineHeight: 1 }}>{COUNTRY_EMOJI[o.country] || "🌐"}</span>
-                      <div className="text-center">
-                        <div className="text-[10px] font-bold uppercase tracking-wide"
-                          style={{ color: "#89D1FF", fontFamily: "'IBM Plex Mono', monospace" }}>{o.label}</div>
-                        <div className="text-[9px] opacity-60" style={{ color: "#89D1FF" }}>{o.count} chat{o.count > 1 ? "s" : ""}</div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <div className="text-xs text-white opacity-60 mt-0.5">iXp Intern · Berlin</div>
             </div>
-          </div>
-        </div>
-
-        {/* Badges teaser */}
-        <div>
-          <h2 className="text-xl font-semibold text-[#002060] text-center mb-4"
-            style={{ fontFamily: "'Fraunces', serif" }}>
-            Earn milestone badges
-          </h2>
-          <div className="rounded-2xl p-6" style={{ backgroundColor: "#fff", border: "1px solid #CFE6FA" }}>
-            <div className="flex justify-center flex-wrap gap-3">
+            <div className="flex items-center gap-4">
               {[
-                { icon: Coffee,    name: "First Connection" },
-                { icon: Globe2,    name: "EMEA Explorer" },
-                { icon: Globe2,    name: "Global Explorer" },
-                { icon: Building2, name: "Office Hopper" },
-                { icon: Award,     name: "Passport Pro" },
-                { icon: Sparkles,  name: "Stamp Collector" },
-              ].map(({ icon: Icon, name }) => (
-                <div key={name} className="flex flex-col items-center gap-1.5 rounded-xl p-3 w-24"
-                  style={{ backgroundColor: "#EAF5FF", border: "1px solid #D1EFFF" }}>
-                  <div className="w-9 h-9 rounded-full flex items-center justify-center"
-                    style={{ backgroundColor: "#002060" }}>
-                    <Icon size={16} color="#89D1FF" />
-                  </div>
-                  <span className="text-[10px] font-medium text-center text-[#002060] leading-tight">{name}</span>
+                { label: "Chats", value: "12" },
+                { label: "Regions", value: "3/4" },
+                { label: "Badges", value: "5" },
+              ].map(s => (
+                <div key={s.label} className="text-center">
+                  <div className="text-2xl font-semibold text-white" style={{ fontFamily: "'72Brand', sans-serif" }}>{s.value}</div>
+                  <div className="text-[10px] text-white opacity-50">{s.label}</div>
                 </div>
               ))}
+            </div>
+          </div>
+          {/* Region + badge preview row */}
+          <div className="px-7 py-5 flex items-center justify-between gap-6">
+            <div>
+              <div className="text-[9px] uppercase tracking-widest mb-2.5"
+                style={{ color: "rgba(137,209,255,0.5)", fontFamily: "'72Brand', sans-serif" }}>Stamps collected</div>
+              <div className="flex gap-2">
+                {[
+                  { label: "EMEA", bg: "#1B90FF", text: "#fff" },
+                  { label: "APAC", bg: "#89D1FF", text: "#002060" },
+                  { label: "NA",   bg: "#DF1278", text: "#fff" },
+                  { label: "MEE",  bg: null, text: "#89D1FF" },
+                ].map(r => (
+                  <div key={r.label}
+                    className="flex items-center justify-center rounded-lg text-[10px] font-bold"
+                    style={{
+                      width: 48, height: 52,
+                      backgroundColor: r.bg || "transparent",
+                      border: r.bg ? "none" : "2px dashed rgba(255,255,255,0.15)",
+                      color: r.text,
+                      opacity: r.bg ? 1 : 0.35,
+                      fontFamily: "'72Brand', sans-serif",
+                      transform: `rotate(${r.label === "EMEA" ? -2 : r.label === "APAC" ? 1 : r.label === "NA" ? -1 : 2}deg)`,
+                    }}>
+                    {r.label}
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div className="text-[9px] uppercase tracking-widest mb-2.5"
+                style={{ color: "rgba(137,209,255,0.5)", fontFamily: "'72Brand', sans-serif" }}>Badges earned</div>
+              <div className="flex gap-2">
+                {[Coffee, Globe2, Globe2, Building2, Award, Sparkles].map((Icon, i) => (
+                  <div key={i} className="w-8 h-8 rounded-full flex items-center justify-center"
+                    style={{ backgroundColor: i < 4 ? "rgba(27,144,255,0.25)" : "rgba(255,255,255,0.06)", border: i < 4 ? "1px solid rgba(27,144,255,0.4)" : "1px solid rgba(255,255,255,0.1)" }}>
+                    <Icon size={13} color={i < 4 ? "#89D1FF" : "rgba(255,255,255,0.2)"} />
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
 
         {/* Bottom CTA */}
         <div className="text-center space-y-3 pb-4">
-          <p className="text-sm text-[#445063]">Ready to start collecting stamps?</p>
-          {/* [SSO-INTEGRATION-POINT] Replace onClick with BTP XSUAA redirect when deployed */}
+          <p className="text-sm" style={{ color: "#7C8896" }}>Ready to start collecting stamps?</p>
           <button onClick={onJoin}
             className="inline-flex items-center gap-2 rounded-full px-8 py-3.5 font-semibold text-sm"
             style={{ backgroundColor: "#002060", color: "#fff", boxShadow: "0 4px 14px rgba(0,32,96,0.25)" }}>
-            {ssoUser ? <><ArrowRight size={16} /> Apply now</> : <><LogIn size={16} /> Sign in with SAP</>}
+            {ssoUser ? <><ArrowRight size={16} /> Apply for a Connections Passport</> : <><LogIn size={16} /> Sign in with SAP</>}
           </button>
         </div>
 
@@ -2771,7 +2858,7 @@ function AdminPanel({ users, matches }) {
         <div className="grid grid-cols-4 gap-2">
           {metrics.map(([label, value]) => (
             <div key={label} className="rounded-xl p-3 border" style={{ backgroundColor: "#F5FAFF", borderColor: "#CFE6FA" }}>
-              <div className="text-base font-semibold" style={{ fontFamily: "'Fraunces', serif", color: "#002060" }}>{value}</div>
+              <div className="text-base font-semibold" style={{ fontFamily: "'72Brand', sans-serif", color: "#002060" }}>{value}</div>
               <div className="text-[10px] text-[#7C8896]">{label}</div>
             </div>
           ))}
@@ -2896,7 +2983,7 @@ function IncomingMatchModal({ match, matchedUser, onAcknowledge }) {
               <Coffee size={14} color="#fff" />
             </div>
             <span className="text-xs font-semibold uppercase tracking-widest text-white"
-              style={{ fontFamily: "'IBM Plex Mono', monospace" }}>
+              style={{ fontFamily: "'72Brand', sans-serif" }}>
               New Connection Request
             </span>
           </div>
@@ -2905,7 +2992,7 @@ function IncomingMatchModal({ match, matchedUser, onAcknowledge }) {
             <Avatar name={matchedUser.name} email={matchedUser.email} size={56} />
             <div>
               <div className="font-semibold text-white text-base"
-                style={{ fontFamily: "'Fraunces', serif" }}>
+                style={{ fontFamily: "'72Brand', sans-serif" }}>
                 {matchedUser.name}
               </div>
               <div className="text-sm text-white">{matchedUser.role}</div>
@@ -2988,7 +3075,7 @@ function StampCelebration({ onDone }) {
           }}>
           <Stamp size={36} color="#DF1278" />
           <div className="text-xs font-bold mt-2 tracking-widest uppercase"
-            style={{ color: "#DF1278", fontFamily: "'IBM Plex Mono', monospace" }}>
+            style={{ color: "#DF1278", fontFamily: "'72Brand', sans-serif" }}>
             Stamped!
           </div>
         </div>
@@ -3112,7 +3199,7 @@ function TutorialOverlay({ onClose }) {
           </div>
           <div>
             <h2 className="text-lg font-semibold mb-2"
-              style={{ color: "#002060", fontFamily: "'Fraunces', serif" }}>
+              style={{ color: "#002060", fontFamily: "'72Brand', sans-serif" }}>
               {s.title}
             </h2>
             <p className="text-sm leading-relaxed" style={{ color: "#445063" }}>
@@ -3153,70 +3240,416 @@ function TutorialOverlay({ onClose }) {
 
 /* ── Feedback Button ───────────────────────────────────────────────────────── */
 
-function FeedbackButton({ open, onToggle }) {
-  const [text, setText] = useState("");
-  const [copied, setCopied] = useState(false);
-  const ref = React.useRef(null);
-
-  React.useEffect(() => {
-    if (!open) { setText(""); setCopied(false); }
-  }, [open]);
-
-  React.useEffect(() => {
-    function handleClick(e) {
-      if (open && ref.current && !ref.current.contains(e.target)) onToggle();
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [open, onToggle]);
-
-  function handleCopy() {
-    const msg = `To: SAPnextgen@sap.com\nSubject: Connections Passport — Feedback\n\nHi SAP Next Gen E2E Team,\n\n${text || "[Please describe your feedback or issue here]"}\n\nThank you.`;
-    navigator.clipboard.writeText(msg)
-      .then(() => { setCopied(true); setTimeout(() => setCopied(false), 3000); })
-      .catch(() => {});
-  }
+function FeedbackButton() {
+  const subject = encodeURIComponent("Connections Passport — Feedback");
+  const body = encodeURIComponent("Hi SAP Next Gen E2E Team,\n\n\n\nThank you.");
+  const href = `mailto:SAPnextgen@sap.com?subject=${subject}&body=${body}`;
 
   return (
-    <div className="relative" ref={ref}>
-      <button
-        onClick={onToggle}
-        title="Share feedback"
-        className="flex items-center justify-center w-8 h-8 rounded-full transition-colors"
-        style={{ backgroundColor: open ? "#DF1278" : "#0A3D8F", color: "#fff" }}>
-        <span style={{ fontSize: 15, lineHeight: 1 }}>{open ? "×" : "💬"}</span>
-      </button>
+    <a
+      href={href}
+      title="Share feedback"
+      className="flex items-center justify-center w-8 h-8 rounded-full transition-colors"
+      style={{ backgroundColor: "#0A3D8F", color: "#fff", textDecoration: "none" }}>
+      <span style={{ fontSize: 15, lineHeight: 1 }}>💬</span>
+    </a>
+  );
+}
 
-      {open && (
-        <div className="absolute right-0 top-10 w-72 rounded-2xl overflow-hidden z-40"
-          style={{ backgroundColor: "#fff", boxShadow: "0 8px 32px rgba(0,32,96,0.25)", border: "1px solid #CFE6FA" }}>
-          <div className="px-4 py-3 border-b" style={{ borderColor: "#EAF5FF", backgroundColor: "#F5FAFF" }}>
-            <div className="text-xs font-semibold" style={{ color: "#002060" }}>Share feedback or report an issue</div>
-            <div className="text-[10px] mt-0.5" style={{ color: "#7C8896" }}>
-              Write your message, then copy and send to SAPnextgen@sap.com
+/* =====================================================================
+   DEMO MODE — Guided tour for All Employee Meeting presentations.
+   Accessible via Admin panel → "Demo Mode" tab.
+   Isolated state: never touches liveUser / demoUsers in the parent app.
+   ===================================================================== */
+
+const DEMO_PERSONA = {
+  id: "demo-alex", email: "alex.kim@sap.com",
+  name: "Alex Kim", role: "STAR Student",
+  office: "Berlin", country: "Germany", region: "EMEA",
+  timezone: "CET",
+  interests: ["Sustainability", "Product Design", "AI & ML"],
+  optedIn: true, paused: false, deleted: false, consentGiven: true,
+  // Pre-seeded with 1 prior chat so passport step shows something interesting
+  collectedRegions: { "APAC": 1 },
+  collectedOffices: { "Tokyo": 1 },
+  chatsCompleted: 1,
+  badges: ["First Connection"],
+  reshufflesUsedToday: 0, matchesAcceptedToday: 0,
+  lastReshuffleDate: null, lastMatchAcceptDate: null,
+};
+
+const DEMO_STEPS = [
+  {
+    view: "signup", signupStep: 0,
+    title: "Step 1 of 7 — Signing up",
+    body: "The first thing a new member sees is the Community Guidelines and Privacy & Data Notice. Both must be acknowledged before any profile data is stored.",
+  },
+  {
+    view: "signup", signupStep: 1,
+    title: "Step 2 of 7 — Your profile",
+    body: "Members set their name, role, and SAP office. Region is auto-detected. This is the card your match will see when the matcher suggests you.",
+  },
+  {
+    view: "signup", signupStep: 2,
+    title: "Step 3 of 7 — Interests",
+    body: "Choose up to 10 interests from curated categories. These appear on your match card as conversation starters before the chat even begins.",
+  },
+  {
+    view: "dashboard", highlight: "matcher",
+    title: "Step 4 of 7 — Finding a match",
+    body: "The matcher suggests a colleague from a different region or office. Hit the pink Spin button for a new suggestion, or Accept to send a coffee chat request. Up to 3 matches per day.",
+  },
+  {
+    view: "dashboard", highlight: "matches",
+    title: "Step 5 of 7 — Active matches",
+    body: "Accepted matches live here with a 7-day window. A meeting invite template with a Teams link is auto-generated. Both people must click 'We met' after the chat to confirm.",
+  },
+  {
+    view: "dashboard", highlight: "stamps", autoConfirm: true,
+    title: "Step 6 of 7 — Earning stamps",
+    body: "When both users confirm, stamps are awarded from the other person's region and office. Milestones unlock badges. Watch — a stamp just landed on Alex's passport!",
+  },
+  {
+    view: "passport",
+    title: "Step 7 of 7 — Your passport",
+    body: "Every completed chat becomes a stamp. Collect regions, offices, and milestone badges as you grow your global SAP Next Gen network. Tap Share to copy your stats.",
+  },
+];
+
+function DemoMode({ onExit, seedUsers: peerUsers }) {
+  const [stepIdx, setStepIdx]     = useState(0);
+  const [demoUser, setDemoUser]   = useState(DEMO_PERSONA);
+  const [celebrating, setCelebrating] = useState(false);
+  const stampFired = React.useRef(false);
+
+  const step = DEMO_STEPS[stepIdx];
+  const total = DEMO_STEPS.length;
+
+  // The match partner for steps 5–7 (Amara Nakamura, APAC/Tokyo from seed pool)
+  const matchPartner = peerUsers.find(u => u.office === "Tokyo") || peerUsers[2] || peerUsers[0];
+
+  // Active match used in steps 5–6
+  const [demoMatch, setDemoMatch] = useState({
+    id: "demo-m1",
+    userAId: DEMO_PERSONA.id, userBId: matchPartner?.id,
+    userAEmail: DEMO_PERSONA.email, userBEmail: matchPartner?.email,
+    status: "active",
+    confirmedA: false, confirmedB: false,
+    acknowledgedByB: true, removed: false,
+    createdAt: Date.now() - 86400000,
+    expiresAt: Date.now() + 6 * 86400000,
+  });
+
+  // Fire stamp award once when step 6 (autoConfirm) is reached
+  React.useEffect(() => {
+    if (!step.autoConfirm) return;
+    if (stampFired.current) return;
+    stampFired.current = true;
+    setTimeout(() => {
+      // Complete the match
+      setDemoMatch(m => ({ ...m, status: "completed", confirmedA: true, confirmedB: true }));
+      // Award stamps to demoUser
+      setDemoUser(u => {
+        const clone = {
+          ...u,
+          collectedRegions: { ...u.collectedRegions },
+          collectedOffices: { ...u.collectedOffices },
+        };
+        if (matchPartner) awardStamps(clone, matchPartner);
+        recalcBadges(clone);
+        return clone;
+      });
+      setCelebrating(true);
+      playStampSound();
+    }, 600);
+  }, [step.autoConfirm]);
+
+  function goNext() {
+    if (stepIdx < total - 1) setStepIdx(i => i + 1);
+  }
+  function goPrev() {
+    if (stepIdx > 0) setStepIdx(i => i - 1);
+  }
+
+  // All users visible to the demo matcher = seed users (excluding Alex)
+  const matcherPeers = peerUsers.filter(u => u.id !== DEMO_PERSONA.id);
+  const allDemoUsers = [demoUser, ...matcherPeers];
+  const allDemoMatches = [demoMatch];
+
+  // ── Render helpers for each view ────────────────────────────────────────────
+
+  function renderSignupStep() {
+    const s = step.signupStep;
+
+    if (s === 0) {
+      // Consent page replica
+      return (
+        <div className="flex-1 overflow-y-auto flex flex-col items-center justify-start py-8 px-4" style={{ backgroundColor: "#EAF5FF" }}>
+          <div className="w-full max-w-md space-y-4">
+            <div className="text-center mb-2">
+              <div className="text-xs tracking-[0.18em] uppercase font-medium mb-1" style={{ color: "#1B90FF", fontFamily: "'72Brand', sans-serif" }}>SAP Next Gen</div>
+              <div className="text-xl font-semibold" style={{ color: "#002060", fontFamily: "'72Brand', sans-serif" }}>Privacy &amp; Consent</div>
             </div>
-          </div>
-          <div className="p-4 space-y-3">
-            <textarea
-              value={text}
-              onChange={e => setText(e.target.value)}
-              placeholder="Describe your feedback or issue…"
-              rows={4}
-              className="w-full rounded-xl px-3 py-2.5 text-xs resize-none outline-none"
-              style={{ border: "1px solid #CFE6FA", color: "#002060", backgroundColor: "#FAFCFF" }}
-            />
-            <button
-              onClick={handleCopy}
-              className="w-full rounded-xl py-2.5 text-xs font-semibold flex items-center justify-center gap-2 transition-colors"
-              style={{ backgroundColor: copied ? "#EAF5FF" : "#002060", color: copied ? "#1B90FF" : "#fff" }}>
-              {copied ? <><Check size={13} /> Copied to clipboard!</> : <>📋 Copy message</>}
+            <div className="rounded-2xl bg-white p-6 space-y-5" style={{ border: "1px solid #CFE6FA" }}>
+              <h2 className="font-semibold text-[#002060]" style={{ fontFamily: "'72Brand', sans-serif" }}>Community Guidelines</h2>
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { emoji: "🤝", rule: "Be respectful", detail: "Professional, inclusive behaviour only." },
+                  { emoji: "📅", rule: "Show up", detail: "Schedule your chat within the 7-day window." },
+                  { emoji: "✅", rule: "Be honest", detail: "Only confirm a chat once it's actually happened." },
+                  { emoji: "🚩", rule: "Report issues", detail: "Report misuse directly to the SAP Next Gen E2E team." },
+                ].map(({ emoji, rule, detail }) => (
+                  <div key={rule} className="rounded-xl p-3 space-y-1" style={{ backgroundColor: "#F5FAFF", border: "1px solid #EAF5FF" }}>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-sm">{emoji}</span>
+                      <span className="text-xs font-semibold text-[#002060]">{rule}</span>
+                    </div>
+                    <p className="text-xs text-[#445063] leading-relaxed">{detail}</p>
+                  </div>
+                ))}
+              </div>
+              <div className="border-t pt-4 space-y-3" style={{ borderColor: "#EAF5FF" }}>
+                <label className="flex items-start gap-3">
+                  <input type="checkbox" readOnly checked className="mt-0.5 shrink-0 accent-[#002060]" />
+                  <span className="text-xs text-[#445063]">I agree to follow the Community Guidelines. <span className="text-[#DF1278] font-semibold">*</span></span>
+                </label>
+                <label className="flex items-start gap-3">
+                  <input type="checkbox" readOnly checked className="mt-0.5 shrink-0 accent-[#002060]" />
+                  <span className="text-xs text-[#445063]">I have read and agree to the <span className="font-medium underline" style={{ color: "#1B90FF" }}>Privacy &amp; Data Notice</span>. <span className="text-[#DF1278] font-semibold">*</span></span>
+                </label>
+              </div>
+            </div>
+            <button className="w-full rounded-xl py-3 font-semibold text-sm flex items-center justify-center gap-2" style={{ backgroundColor: "#002060", color: "#fff" }}>
+              I agree — continue <ArrowRight size={15} />
             </button>
-            <p className="text-[10px] text-center" style={{ color: "#7C8896" }}>
-              Paste into an email to <span className="font-medium">SAPnextgen@sap.com</span>
-            </p>
           </div>
         </div>
-      )}
+      );
+    }
+
+    if (s === 1) {
+      // Profile form replica (pre-filled with Alex Kim)
+      return (
+        <div className="flex-1 overflow-y-auto flex flex-col items-center justify-start py-8 px-4" style={{ backgroundColor: "#EAF5FF" }}>
+          <div className="w-full max-w-md space-y-4">
+            <div className="text-center mb-2">
+              <div className="text-xs tracking-[0.18em] uppercase font-medium mb-1" style={{ color: "#1B90FF", fontFamily: "'72Brand', sans-serif" }}>Step 2 of 4</div>
+              <div className="text-xl font-semibold" style={{ color: "#002060", fontFamily: "'72Brand', sans-serif" }}>Tell us about yourself</div>
+            </div>
+            <div className="rounded-2xl bg-white p-6 space-y-4" style={{ border: "1px solid #CFE6FA" }}>
+              {[
+                { label: "Full name", value: DEMO_PERSONA.name },
+                { label: "Role", value: DEMO_PERSONA.role },
+                { label: "Office", value: `${DEMO_PERSONA.office}, ${DEMO_PERSONA.country}` },
+                { label: "Region (auto-detected)", value: DEMO_PERSONA.region },
+              ].map(({ label, value }) => (
+                <div key={label}>
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.14em] mb-1" style={{ color: "#7C8896", fontFamily: "'72Brand', sans-serif" }}>{label}</div>
+                  <div className="rounded-xl px-4 py-3 text-sm font-medium" style={{ backgroundColor: "#F5FAFF", border: "1px solid #EAF5FF", color: "#002060" }}>{value}</div>
+                </div>
+              ))}
+            </div>
+            <button className="w-full rounded-xl py-3 font-semibold text-sm flex items-center justify-center gap-2" style={{ backgroundColor: "#002060", color: "#fff" }}>
+              Next <ArrowRight size={15} />
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    if (s === 2) {
+      // Interests replica (pre-selected chips)
+      return (
+        <div className="flex-1 overflow-y-auto flex flex-col items-center justify-start py-8 px-4" style={{ backgroundColor: "#EAF5FF" }}>
+          <div className="w-full max-w-md space-y-4">
+            <div className="text-center mb-2">
+              <div className="text-xs tracking-[0.18em] uppercase font-medium mb-1" style={{ color: "#1B90FF", fontFamily: "'72Brand', sans-serif" }}>Step 3 of 4</div>
+              <div className="text-xl font-semibold" style={{ color: "#002060", fontFamily: "'72Brand', sans-serif" }}>Pick your interests</div>
+              <p className="text-xs mt-1" style={{ color: "#7C8896" }}>Choose 2–10 topics you'd love to chat about</p>
+            </div>
+            <div className="rounded-2xl bg-white p-6 space-y-4" style={{ border: "1px solid #CFE6FA" }}>
+              {INTEREST_CATEGORIES.map(cat => (
+                <div key={cat.label}>
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.14em] mb-2 flex items-center gap-1.5" style={{ color: "#7C8896", fontFamily: "'72Brand', sans-serif" }}>
+                    <span>{cat.emoji}</span>{cat.label}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {cat.items.map(item => {
+                      const selected = DEMO_PERSONA.interests.includes(item);
+                      return (
+                        <span key={item} className="text-[11px] rounded-full px-2.5 py-1 font-medium"
+                          style={{
+                            backgroundColor: selected ? "#002060" : "#F5FAFF",
+                            color: selected ? "#fff" : "#445063",
+                            border: `1px solid ${selected ? "#002060" : "#EAF5FF"}`,
+                          }}>
+                          {item}
+                        </span>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return null;
+  }
+
+  function renderDashboard() {
+    const hl = step.highlight;
+    return (
+      <div className="flex-1 overflow-hidden flex flex-col">
+        {/* Identity strip */}
+        <div className="shrink-0 px-6 py-4 border-b flex items-center gap-6"
+          style={{ backgroundColor: "#fff", borderColor: "#CFE6FA" }}>
+          <div className="flex items-center gap-3">
+            <Avatar name={demoUser.name} email={demoUser.email} size={44} />
+            <div>
+              <div className="font-semibold text-sm" style={{ color: "#002060", fontFamily: "'72Brand', sans-serif" }}>{demoUser.name}</div>
+              <div className="text-xs" style={{ color: "#7C8896" }}>{demoUser.role} · {demoUser.office}</div>
+            </div>
+          </div>
+          <div className="h-8 w-px mx-2" style={{ backgroundColor: "#EAF5FF" }} />
+          <div className="flex items-center gap-3">
+            {[
+              { label: "Chats completed", value: demoUser.chatsCompleted || 0, color: "#1B90FF" },
+              { label: "Regions collected", value: `${Object.keys(demoUser.collectedRegions || {}).length} / 4`, color: "#DF1278" },
+              { label: "Offices collected", value: Object.keys(demoUser.collectedOffices || {}).length, color: "#002060" },
+              { label: "Badges earned", value: (Array.isArray(demoUser.badges) ? demoUser.badges : []).length, color: "#7C3AED" },
+            ].map(s => (
+              <div key={s.label} className="flex flex-col items-center justify-center rounded-xl px-5 py-2.5"
+                style={{ backgroundColor: "#F5FAFF", border: "1px solid #EAF5FF", minWidth: 90 }}>
+                <span className="text-xl font-semibold leading-none" style={{ color: s.color, fontFamily: "'72Brand', sans-serif" }}>{s.value}</span>
+                <span className="text-[10px] mt-1 text-center leading-tight" style={{ color: "#7C8896" }}>{s.label}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Two panels */}
+        <div className="flex-1 overflow-hidden grid" style={{ gridTemplateColumns: "1fr 420px" }}>
+          {/* Left — MatchPanel */}
+          <div className="border-r overflow-hidden flex flex-col transition-opacity duration-300"
+            style={{
+              borderColor: "#CFE6FA",
+              opacity: hl === "matches" ? 0.45 : 1,
+              boxShadow: hl === "matcher" ? "inset 0 0 0 3px #1B90FF" : "none",
+              borderRadius: hl === "matcher" ? "0" : undefined,
+            }}>
+            <MatchPanel
+              users={allDemoUsers}
+              matches={allDemoMatches}
+              currentUser={demoUser}
+              onAccept={() => {}}
+              onReshuffle={() => {}}
+              reshufflesLeft={3}
+              matchesLeft={3}
+            />
+          </div>
+
+          {/* Right — MatchesPanel */}
+          <div className="overflow-hidden border-l transition-opacity duration-300"
+            style={{
+              backgroundColor: "#fff", borderColor: "#CFE6FA",
+              opacity: hl === "matcher" ? 0.45 : 1,
+              boxShadow: (hl === "matches" || hl === "stamps") ? "inset 0 0 0 3px #1B90FF" : "none",
+            }}>
+            <MatchesPanel
+              matches={allDemoMatches}
+              users={allDemoUsers}
+              currentUser={demoUser}
+              onConfirm={() => {}}
+              onRemove={() => {}}
+              onAcknowledge={() => {}}
+            />
+          </div>
+        </div>
+
+        {celebrating && <StampCelebration onDone={() => setCelebrating(false)} />}
+      </div>
+    );
+  }
+
+  function renderPassport() {
+    return <PassportPage user={demoUser} />;
+  }
+
+  // ── Main render ─────────────────────────────────────────────────────────────
+  return (
+    <div className="flex flex-col h-full overflow-hidden relative" style={{ backgroundColor: "#EAF5FF" }}>
+
+      {/* Content area */}
+      <div className="flex-1 overflow-hidden flex flex-col" style={{ paddingBottom: 110 }}>
+        {step.view === "signup"    && renderSignupStep()}
+        {step.view === "dashboard" && renderDashboard()}
+        {step.view === "passport"  && renderPassport()}
+      </div>
+
+      {/* Narrator card — fixed bottom-center */}
+      <div style={{
+        position: "absolute", bottom: 16, left: "50%", transform: "translateX(-50%)",
+        width: "min(500px, calc(100% - 32px))", zIndex: 50,
+        backgroundColor: "#001642",
+        borderRadius: 20, border: "1.5px solid #1B90FF",
+        boxShadow: "0 8px 40px rgba(0,22,66,0.65)",
+        padding: "16px 20px",
+      }}>
+        {/* Progress bar */}
+        <div className="flex gap-1 mb-3">
+          {Array.from({ length: total }).map((_, i) => (
+            <div key={i} className="flex-1 h-1 rounded-full transition-all duration-300"
+              style={{ backgroundColor: i <= stepIdx ? "#1B90FF" : "rgba(255,255,255,0.12)" }} />
+          ))}
+        </div>
+
+        {/* Title */}
+        <div className="text-sm font-semibold mb-1" style={{ color: "#fff", fontFamily: "'72Brand', sans-serif" }}>
+          {step.title}
+        </div>
+
+        {/* Body */}
+        <div className="text-[11px] leading-relaxed mb-4" style={{ color: "#89D1FF" }}>
+          {step.body}
+        </div>
+
+        {/* Controls */}
+        <div className="flex items-center justify-between gap-3">
+          <button
+            onClick={goPrev}
+            disabled={stepIdx === 0}
+            className="flex items-center gap-1.5 text-xs font-medium rounded-full px-3 py-1.5 transition-opacity disabled:opacity-0"
+            style={{ backgroundColor: "rgba(255,255,255,0.08)", color: "#89D1FF", border: "1px solid rgba(255,255,255,0.12)" }}>
+            <ArrowLeft size={12} /> Prev
+          </button>
+
+          <button
+            onClick={onExit}
+            className="text-[10px] font-medium"
+            style={{ color: "rgba(137,209,255,0.5)" }}>
+            Exit demo
+          </button>
+
+          {stepIdx < total - 1 ? (
+            <button
+              onClick={goNext}
+              className="flex items-center gap-1.5 text-xs font-semibold rounded-full px-4 py-1.5"
+              style={{ backgroundColor: "#1B90FF", color: "#fff" }}>
+              Next <ArrowRight size={12} />
+            </button>
+          ) : (
+            <button
+              onClick={onExit}
+              className="flex items-center gap-1.5 text-xs font-semibold rounded-full px-4 py-1.5"
+              style={{ backgroundColor: "#DF1278", color: "#fff" }}>
+              Finish <Sparkles size={12} />
+            </button>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -3235,7 +3668,7 @@ function GoodbyePage({ onContinue }) {
         <Coffee size={28} color="#002060" />
       </div>
       <div className="text-center space-y-2">
-        <div className="text-2xl font-semibold" style={{ color: "#002060", fontFamily: "'Fraunces', serif" }}>
+        <div className="text-2xl font-semibold" style={{ color: "#002060", fontFamily: "'72Brand', sans-serif" }}>
           See you around
         </div>
         <p className="text-sm max-w-xs leading-relaxed" style={{ color: "#7C8896" }}>
@@ -3266,13 +3699,13 @@ export default function CoffeePassportApp() {
   // ── UI state ─────────────────────────────────────────────────────────────────
   const [currentUserId, setCurrentUserId] = useState(null);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [adminTab, setAdminTab] = useState("dashboard");
   const [view, setView] = useState("landing");
   const [signedUpIds, setSignedUpIds] = useState(new Set());
   const [notifications, setNotifications] = useState([]);
   const [celebrating, setCelebrating] = useState(false);
   const [ssoUser, setSsoUser] = useState(null);
   const [showTutorial, setShowTutorial] = useState(false);
-  const [feedbackOpen, setFeedbackOpen] = useState(false);
 
   // ── Demo state (in-memory fallback, used when backend unavailable) ───────────
   const [demoUsers, setDemoUsers] = useState(demoState.users);
@@ -3433,7 +3866,7 @@ export default function CoffeePassportApp() {
           matchesAcceptedToday: u.lastMatchAcceptDate === todayStr()
             ? (u.matchesAcceptedToday || 0) + 1 : 1,
         } : u);
-        pushNotif("☕ New coffee match!", `You've been matched with ${otherUser.name} from ${otherUser.office}. Say hello!`);
+        pushNotif("☕ New coffee match!", `You've been matched with ${displayName(otherUser)} from ${otherUser.office}. Say hello!`);
       } catch (e) {
         pushNotif("Could not create match", e.message);
       }
@@ -3452,7 +3885,7 @@ export default function CoffeePassportApp() {
           acknowledgedByB: false,
         };
         setDemoMatches(m => [...m, newMatch]);
-        pushNotif("☕ New coffee match!", `You've been matched with ${otherUser.name} from ${otherUser.office}. Say hello!`);
+        pushNotif("☕ New coffee match!", `You've been matched with ${displayName(otherUser)} from ${otherUser.office}. Say hello!`);
         return users.map(u => u.id === currentUser.id
           ? { ...u, lastMatchAcceptDate: todayStr(), matchesAcceptedToday: acceptedToday + 1 }
           : u);
@@ -3573,7 +4006,7 @@ export default function CoffeePassportApp() {
             <Coffee size={14} color="#fff" />
           </div>
           <span className="text-white font-semibold text-sm tracking-tight"
-            style={{ fontFamily: "'Fraunces', serif" }}>
+            style={{ fontFamily: "'72Brand', sans-serif" }}>
             SAP Next Gen Connections Passport
           </span>
         </div>
@@ -3596,7 +4029,7 @@ export default function CoffeePassportApp() {
         <div className="flex items-center gap-2">
           {/* Feedback button — always visible when logged in */}
           {ssoUser && (
-            <FeedbackButton open={feedbackOpen} onToggle={() => setFeedbackOpen(v => !v)} />
+            <FeedbackButton />
           )}
           {/* User name in nav */}
           {ssoUser && (
@@ -3640,7 +4073,8 @@ export default function CoffeePassportApp() {
             onPause={hasSignedUp ? handlePause : undefined}
             onDelete={hasSignedUp ? handleDelete : undefined}
             initialData={hasSignedUp && currentUser ? {
-              name: currentUser.name, role: currentUser.role,
+              name: currentUser.name, preferredName: currentUser.preferredName || "",
+              role: currentUser.role,
               office: currentUser.office, country: currentUser.country,
               region: currentUser.region, interests: currentUser.interests,
             } : null}
@@ -3648,7 +4082,8 @@ export default function CoffeePassportApp() {
               if (backendAvailable) {
                 try {
                   const saved = await API.upsertUser({
-                    name: form.name, role: form.role,
+                    name: form.name, preferredName: form.preferredName || "",
+                    role: form.role,
                     office: form.office, country: form.country,
                     region: form.region,
                     interests: Array.isArray(form.interests)
@@ -3712,8 +4147,8 @@ export default function CoffeePassportApp() {
                 <div className="flex items-center gap-3">
                   <Avatar name={currentUser.name} email={currentUser.email} size={44} />
                   <div>
-                    <div className="font-semibold text-sm" style={{ color: "#002060", fontFamily: "'Fraunces', serif" }}>
-                      {currentUser.name}
+                    <div className="font-semibold text-sm" style={{ color: "#002060", fontFamily: "'72Brand', sans-serif" }}>
+                      {displayName(currentUser)}
                     </div>
                     <div className="text-xs" style={{ color: "#7C8896" }}>
                       {currentUser.role} · {currentUser.office}
@@ -3731,10 +4166,18 @@ export default function CoffeePassportApp() {
                     <div key={s.label} className="flex flex-col items-center justify-center rounded-xl px-5 py-2.5"
                       style={{ backgroundColor: "#F5FAFF", border: "1px solid #EAF5FF", minWidth: 90 }}>
                       <span className="text-xl font-semibold leading-none"
-                        style={{ color: s.color, fontFamily: "'Fraunces', serif" }}>{s.value}</span>
+                        style={{ color: s.color, fontFamily: "'72Brand', sans-serif" }}>{s.value}</span>
                       <span className="text-[10px] mt-1 text-center leading-tight" style={{ color: "#7C8896" }}>{s.label}</span>
                     </div>
                   ))}
+                </div>
+                <div className="ml-auto">
+                  <button onClick={() => setShowTutorial(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium"
+                    style={{ border: "1px solid #CFE6FA", color: "#1B90FF", backgroundColor: "#F5FAFF" }}>
+                    <HelpCircle size={13} />
+                    How it works
+                  </button>
                 </div>
               </div>
             )}
@@ -3762,7 +4205,7 @@ export default function CoffeePassportApp() {
                       <div className="flex items-center gap-2 mb-3">
                         <Coffee size={13} color="#1B90FF" />
                         <span className="text-[10px] font-semibold uppercase tracking-[0.16em]"
-                          style={{ color: "#002060", fontFamily: "'IBM Plex Mono', monospace" }}>
+                          style={{ color: "#002060", fontFamily: "'72Brand', sans-serif" }}>
                           Recent Chats
                         </span>
                         {completed.length > 0 && (
@@ -3792,7 +4235,7 @@ export default function CoffeePassportApp() {
                                 <Avatar name={other.name} email={other.email} size={32} />
                                 <span className="text-[9px] font-medium text-center leading-tight"
                                   style={{ color: "#002060", maxWidth: 64 }}>
-                                  {other.name.split(" ")[0]}
+                                  {displayName(other).split(" ")[0]}
                                 </span>
                                 <span className="text-[9px] px-1.5 py-0.5 rounded-full"
                                   style={{ backgroundColor: "#D1EFFF", color: "#002060" }}>
@@ -3816,8 +4259,27 @@ export default function CoffeePassportApp() {
         )}
 
         {isAdmin && (
-          <div className="flex-1 overflow-hidden bg-white">
-            <AdminPanel users={matcherUsers} matches={activeMatches} />
+          <div className="flex-1 overflow-hidden flex flex-col bg-white">
+            {/* Admin sub-nav */}
+            <div className="shrink-0 flex items-center gap-1 px-4 py-2 border-b" style={{ borderColor: "#CFE6FA", backgroundColor: "#F5FAFF" }}>
+              {[
+                { key: "dashboard", label: "Admin Dashboard" },
+                { key: "demo",      label: "▶ Demo Mode" },
+              ].map(tab => (
+                <button key={tab.key} onClick={() => setAdminTab(tab.key)}
+                  className="px-3 py-1.5 rounded-full text-xs font-medium transition-colors"
+                  style={{
+                    backgroundColor: adminTab === tab.key ? "#002060" : "transparent",
+                    color: adminTab === tab.key ? "#fff" : "#445063",
+                  }}>
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex-1 overflow-hidden">
+              {adminTab === "dashboard" && <AdminPanel users={matcherUsers} matches={activeMatches} />}
+              {adminTab === "demo"      && <DemoMode onExit={() => setAdminTab("dashboard")} seedUsers={demoState.users} />}
+            </div>
           </div>
         )}
       </div>

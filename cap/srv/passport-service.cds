@@ -17,13 +17,14 @@ service PassportService @(path:'/PassportService') {
   action deleteUser()                      returns Boolean;
 
   action upsertUser(profile: {
-    name:         String;
-    role:         String;
-    office:       String;
-    country:      String;
-    region:       String;
-    interests:    String;
-    consentGiven: Boolean;
+    name:          String;
+    preferredName: String;
+    role:          String;
+    office:        String;
+    country:       String;
+    region:        String;
+    interests:     String;
+    consentGiven:  Boolean;
   }) returns Users;
 
   // Returns the caller's full state in one round-trip.

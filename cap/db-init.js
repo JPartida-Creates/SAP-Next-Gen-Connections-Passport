@@ -49,6 +49,7 @@ async function ensureTables(creds) {
       ddl: `CREATE COLUMN TABLE "${schema}"."USERS" (
         "EMAIL"               NVARCHAR(255) NOT NULL PRIMARY KEY,
         "NAME"                NVARCHAR(255),
+        "PREFERREDNAME"       NVARCHAR(255) DEFAULT '',
         "ROLE"                NVARCHAR(100),
         "OFFICE"              NVARCHAR(100),
         "COUNTRY"             NVARCHAR(100),
@@ -103,6 +104,27 @@ async function ensureTables(creds) {
       console.log(`Table ${schema}.${table.name} created.`);
     } else {
       console.log(`Table ${schema}.${table.name} already exists.`);
+    }
+  }
+
+  // ── Column migrations: add new columns to existing tables ──────────────────
+  const columnMigrations = [
+    {
+      check: `SELECT COUNT(*) AS CNT FROM TABLE_COLUMNS WHERE SCHEMA_NAME='${schema}' AND TABLE_NAME='USERS' AND COLUMN_NAME='PREFERREDNAME'`,
+      alter: `ALTER TABLE "${schema}"."USERS" ADD ("PREFERREDNAME" NVARCHAR(255) DEFAULT '')`,
+      label: "USERS.PREFERREDNAME",
+    },
+  ];
+  for (const m of columnMigrations) {
+    const exists = await new Promise((resolve, reject) => {
+      client.exec(m.check, (err, rows) => err ? reject(err) : resolve(rows[0].CNT > 0));
+    });
+    if (!exists) {
+      console.log(`Adding column ${m.label}...`);
+      await new Promise((resolve, reject) => {
+        client.exec(m.alter, err => err ? reject(err) : resolve());
+      });
+      console.log(`Column ${m.label} added.`);
     }
   }
 

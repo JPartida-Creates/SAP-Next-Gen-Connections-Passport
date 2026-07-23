@@ -1,3 +1,52 @@
+@font-face {
+  font-family: '72Brand';
+  src: url('/fonts/72Brand-Regular.otf') format('opentype');
+  font-weight: 400;
+  font-style: normal;
+}
+@font-face {
+  font-family: '72Brand';
+  src: url('/fonts/72Brand-Italic.otf') format('opentype');
+  font-weight: 400;
+  font-style: italic;
+}
+@font-face {
+  font-family: '72Brand';
+  src: url('/fonts/72Brand-Book.otf') format('opentype');
+  font-weight: 450;
+  font-style: normal;
+}
+@font-face {
+  font-family: '72Brand';
+  src: url('/fonts/72Brand-Medium.otf') format('opentype');
+  font-weight: 500;
+  font-style: normal;
+}
+@font-face {
+  font-family: '72Brand';
+  src: url('/fonts/72Brand-MediumItalic.otf') format('opentype');
+  font-weight: 500;
+  font-style: italic;
+}
+@font-face {
+  font-family: '72Brand';
+  src: url('/fonts/72Brand-Bold.otf') format('opentype');
+  font-weight: 700;
+  font-style: normal;
+}
+@font-face {
+  font-family: '72Brand';
+  src: url('/fonts/72Brand-BoldItalic.otf') format('opentype');
+  font-weight: 700;
+  font-style: italic;
+}
+@font-face {
+  font-family: '72Brand';
+  src: url('/fonts/72Brand-Black.otf') format('opentype');
+  font-weight: 900;
+  font-style: normal;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -9,5 +58,5 @@
 body {
   margin: 0;
   padding: 0;
-  font-family: 'Inter', sans-serif;
+  font-family: '72Brand', sans-serif;
 }

@@ -1,7 +1,7 @@
 _schema-version: "3.1"
 ID: connections-passport
 description: SAP Next Gen Connections Passport
-version: 1.1.17
+version: 1.1.33
 
 modules:
 
