@@ -3053,22 +3053,14 @@ function TutorialOverlay({ onClose }) {
     onClose();
   }
 
-  // Card position: below target if there's room, otherwise centered
-  const cardStyle = targetRect
-    ? {
-        position: "fixed",
-        top: Math.min(targetRect.top + targetRect.height + 16, window.innerHeight - 320),
-        left: Math.max(16, Math.min(targetRect.left, window.innerWidth - 384 - 16)),
-        width: 360,
-        zIndex: 60,
-      }
-    : {
-        position: "fixed",
-        top: "50%", left: "50%",
-        transform: "translate(-50%, -50%)",
-        width: 360,
-        zIndex: 60,
-      };
+  // Card is always centered — the highlight ring shows what's being discussed
+  const cardStyle = {
+    position: "fixed",
+    top: "50%", left: "50%",
+    transform: "translate(-50%, -50%)",
+    width: 360,
+    zIndex: 60,
+  };
 
   return (
     <div className="fixed inset-0" style={{ zIndex: 50 }}>
