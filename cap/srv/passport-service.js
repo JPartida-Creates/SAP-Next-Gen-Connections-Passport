@@ -332,6 +332,9 @@ module.exports = cds.service.impl(async function (srv) {
       `UPDATE "${schema}"."MATCHES" SET "STATUS"='expired' WHERE ("USERAMAIL"=? OR "USERBMAIL"=?) AND "STATUS" IN ('active','pending_confirmation')`,
       [email, email]
     );
+    return true;
+  });
+
   // ── adminSetActive ───────────────────────────────────────────────────────
   srv.on("adminSetActive", async (req) => {
     const caller = callerEmail(req);
