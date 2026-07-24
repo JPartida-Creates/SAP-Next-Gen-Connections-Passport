@@ -61,6 +61,7 @@ const API = {
   deleteUser:      ()           => API._call("deleteUser"),
   adminResetShuffles: (email)   => API._call("adminResetShuffles", { email }),
   adminSetActive:     (email)   => API._call("adminSetActive",     { email }),
+  adminGetAllUsers:   ()        => API._call("adminGetAllUsers").then(r => typeof r === "string" ? JSON.parse(r) : r),
 };
 
 /* Normalize a user row from the CAP API into the shape the UI expects.
@@ -2710,6 +2711,16 @@ function LandingPage({ onJoin, ssoUser }) {
 
 
 function AdminPanel({ users, matches, onResetShuffles, onSetActive }) {
+  const [allUsers, setAllUsers] = React.useState(null); // null = loading
+
+  React.useEffect(() => {
+    API.adminGetAllUsers()
+      .then(rows => setAllUsers(rows.map(normalizeUser)))
+      .catch(() => setAllUsers(users)); // fallback to prop if backend call fails
+  }, []);
+
+  // Use allUsers for the table (includes non-opted-in), users prop for stats
+  const tableUsers = allUsers ?? users;
   const optedIn = users.filter(u => u.optedIn).length;
   const completed = matches.filter(m => m.status === "completed").length;
   const active = matches.filter(m => m.status === "active").length;
@@ -2802,8 +2813,11 @@ function AdminPanel({ users, matches, onResetShuffles, onSetActive }) {
         </div>
         <div className="rounded-xl border overflow-hidden" style={{ borderColor: "#CFE6FA" }}>
           <div className="px-3 py-2 text-xs font-semibold text-[#002060] border-b" style={{ borderColor: "#CFE6FA", backgroundColor: "#EAF5FF" }}>
-            Users
+            Users {allUsers && <span className="font-normal text-[#7C8896]">({allUsers.length} total)</span>}
           </div>
+          {allUsers === null ? (
+            <div className="px-3 py-4 text-xs text-[#7C8896]">Loading...</div>
+          ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
@@ -2816,7 +2830,7 @@ function AdminPanel({ users, matches, onResetShuffles, onSetActive }) {
                 </tr>
               </thead>
               <tbody>
-                {[...users].sort((a, b) => (a.name || "").localeCompare(b.name || "")).map(u => {
+                {[...tableUsers].sort((a, b) => (a.name || "").localeCompare(b.name || "")).map(u => {
                   const shufflesUsed = u.lastReshuffleDate === new Date().toDateString() ? (u.reshufflesUsedToday || 0) : 0;
                   const shufflesLeft = Math.max(0, 3 - shufflesUsed);
                   return (
@@ -2826,10 +2840,14 @@ function AdminPanel({ users, matches, onResetShuffles, onSetActive }) {
                       <td className="px-3 py-2">
                         {u.deleted ? <span style={{ color: "#7C8896" }}>Deleted</span>
                           : u.paused ? <span style={{ color: "#DF1278" }}>Paused</span>
+                          : !u.optedIn ? <span style={{ color: "#DF1278" }}>Not opted in</span>
                           : <span style={{ color: "#1B90FF" }}>Active</span>}
                         {(u.deleted || u.paused || !u.optedIn) && (
                           <button
-                            onClick={() => onSetActive && onSetActive(u.id)}
+                            onClick={() => {
+                              onSetActive && onSetActive(u.id);
+                              setAllUsers(prev => prev.map(x => x.id === u.id ? { ...x, optedIn: true, paused: false, deleted: false } : x));
+                            }}
                             className="ml-2 text-[10px] font-medium rounded-full px-2 py-0.5 transition-colors"
                             style={{ backgroundColor: "#E6F9F0", color: "#1A7F4B", border: "1px solid #A8E6C8" }}>
                             Set active
@@ -2853,6 +2871,7 @@ function AdminPanel({ users, matches, onResetShuffles, onSetActive }) {
               </tbody>
             </table>
           </div>
+          )}
         </div>
       </div>
     </div>

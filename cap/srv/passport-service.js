@@ -335,6 +335,15 @@ module.exports = cds.service.impl(async function (srv) {
     return true;
   });
 
+  // ── adminGetAllUsers ─────────────────────────────────────────────────────
+  srv.on("adminGetAllUsers", async (req) => {
+    const caller = callerEmail(req);
+    if (!caller) return;
+    if (caller !== "j.partida@sap.com") req.reject(403, "Admin only");
+    const rows = await exec(`SELECT * FROM "${schema}"."USERS"`, []);
+    return JSON.stringify(rows.map(rowToUser));
+  });
+
   // ── adminSetActive ───────────────────────────────────────────────────────
   srv.on("adminSetActive", async (req) => {
     const caller = callerEmail(req);
